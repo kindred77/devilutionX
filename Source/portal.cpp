@@ -19,7 +19,7 @@ Portal Portals[MAXPORTAL];
 namespace {
 
 /** Current portal number (a portal array index). */
-int portalindex;
+size_t portalindex;
 
 /** Coordinate of each players portal in town. */
 Point WarpDrop[MAXPORTAL] = {
@@ -38,28 +38,26 @@ void InitPortals()
 	}
 }
 
-void SetPortalStats(int i, bool o, int x, int y, int lvl, dungeon_type lvltype)
+void SetPortalStats(int i, bool o, Point position, int lvl, dungeon_type lvltype, bool isSetLevel)
 {
 	Portals[i].open = o;
-	Portals[i].position = { x, y };
+	Portals[i].position = position;
 	Portals[i].level = lvl;
 	Portals[i].ltype = lvltype;
-	Portals[i].setlvl = false;
+	Portals[i].setlvl = isSetLevel;
 }
 
-void AddWarpMissile(int i, Point position)
+void AddWarpMissile(int i, Point position, bool sync)
 {
-	MissilesData[MIS_TOWN].mlSFX = SFX_NONE;
-
-	auto *missile = AddMissile({ 0, 0 }, position, Direction::South, MIS_TOWN, TARGET_MONSTERS, i, 0, 0);
+	auto *missile = AddMissile({ 0, 0 }, position, Direction::South, MissileID::TownPortal, TARGET_MONSTERS, i, 0, 0, /*parent=*/nullptr, SFX_NONE);
 	if (missile != nullptr) {
-		SetMissDir(*missile, 1);
+		// Don't show portal opening animation if we sync existing portals
+		if (sync)
+			SetMissDir(*missile, 1);
 
-		if (currlevel != 0)
+		if (leveltype != DTYPE_TOWN)
 			missile->_mlid = AddLight(missile->position.tile, 15);
 	}
-
-	MissilesData[MIS_TOWN].mlSFX = LS_SENTINEL;
 }
 
 void SyncPortals()
@@ -67,21 +65,21 @@ void SyncPortals()
 	for (int i = 0; i < MAXPORTAL; i++) {
 		if (!Portals[i].open)
 			continue;
-		if (currlevel == 0)
-			AddWarpMissile(i, WarpDrop[i]);
+		if (leveltype == DTYPE_TOWN)
+			AddWarpMissile(i, WarpDrop[i], true);
 		else {
 			int lvl = currlevel;
 			if (setlevel)
 				lvl = setlvlnum;
 			if (Portals[i].level == lvl && Portals[i].setlvl == setlevel)
-				AddWarpMissile(i, Portals[i].position);
+				AddWarpMissile(i, Portals[i].position, true);
 		}
 	}
 }
 
 void AddInTownPortal(int i)
 {
-	AddWarpMissile(i, WarpDrop[i]);
+	AddWarpMissile(i, WarpDrop[i], false);
 }
 
 void ActivatePortal(int i, Point position, int lvl, dungeon_type dungeonType, bool isSetLevel)
@@ -101,18 +99,18 @@ void DeactivatePortal(int i)
 	Portals[i].open = false;
 }
 
-bool PortalOnLevel(int i)
+bool PortalOnLevel(size_t i)
 {
-	if (Portals[i].level == currlevel)
+	if (Portals[i].setlvl == setlevel && Portals[i].level == setlevel ? static_cast<int>(setlvlnum) : currlevel)
 		return true;
 
-	return currlevel == 0;
+	return leveltype == DTYPE_TOWN;
 }
 
 void RemovePortalMissile(int id)
 {
 	Missiles.remove_if([id](Missile &missile) {
-		if (missile._mitype == MIS_TOWN && missile._misource == id) {
+		if (missile._mitype == MissileID::TownPortal && missile._misource == id) {
 			dFlags[missile.position.tile.x][missile.position.tile.y] &= ~DungeonFlag::Missile;
 
 			if (Portals[id].level != 0)
@@ -124,17 +122,17 @@ void RemovePortalMissile(int id)
 	});
 }
 
-void SetCurrentPortal(int p)
+void SetCurrentPortal(size_t p)
 {
 	portalindex = p;
 }
 
 void GetPortalLevel()
 {
-	if (currlevel != 0) {
+	if (leveltype != DTYPE_TOWN) {
 		setlevel = false;
 		currlevel = 0;
-		Players[MyPlayerId].plrlevel = 0;
+		MyPlayer->setLevel(0);
 		leveltype = DTYPE_TOWN;
 		return;
 	}
@@ -143,12 +141,12 @@ void GetPortalLevel()
 		setlevel = true;
 		setlvlnum = (_setlevels)Portals[portalindex].level;
 		currlevel = Portals[portalindex].level;
-		Players[MyPlayerId].plrlevel = setlvlnum;
-		leveltype = Portals[portalindex].ltype;
+		MyPlayer->setLevel(setlvlnum);
+		setlvltype = leveltype = Portals[portalindex].ltype;
 	} else {
 		setlevel = false;
 		currlevel = Portals[portalindex].level;
-		Players[MyPlayerId].plrlevel = currlevel;
+		MyPlayer->setLevel(currlevel);
 		leveltype = Portals[portalindex].ltype;
 	}
 
@@ -160,7 +158,7 @@ void GetPortalLevel()
 
 void GetPortalLvlPos()
 {
-	if (currlevel == 0) {
+	if (leveltype == DTYPE_TOWN) {
 		ViewPosition = WarpDrop[portalindex] + Displacement { 1, 1 };
 	} else {
 		ViewPosition = Portals[portalindex].position;
@@ -172,10 +170,13 @@ void GetPortalLvlPos()
 	}
 }
 
-bool PosOkPortal(int lvl, int x, int y)
+bool PosOkPortal(int lvl, Point position)
 {
 	for (auto &portal : Portals) {
-		if (portal.open && portal.level == lvl && ((portal.position.x == x && portal.position.y == y) || (portal.position.x == x - 1 && portal.position.y == y - 1)))
+		if (portal.open
+		    && portal.level == lvl
+		    && ((portal.position == position)
+		        || (portal.position == position - Displacement { 1, 1 })))
 			return true;
 	}
 	return false;
