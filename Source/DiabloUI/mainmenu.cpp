@@ -4,6 +4,7 @@
 #include "control.h"
 #include "engine/load_clx.hpp"
 #include "utils/language.h"
+#include "engine/render/clx_render.hpp"
 
 namespace devilution {
 namespace {
@@ -14,6 +15,8 @@ std::vector<std::unique_ptr<UiItemBase>> vecMainMenuDialog;
 std::vector<std::unique_ptr<UiListItem>> vecMenuItems;
 
 _mainmenu_selections MainMenuResult;
+
+//OptionalOwnedClxSpriteList mir_test_sprite;
 
 void UiMainMenuSelect(int value)
 {
@@ -53,6 +56,8 @@ void MainmenuLoad(const char *name)
 
 	UiAddBackground(&vecMainMenuDialog);
 	UiAddLogo(&vecMainMenuDialog);
+
+	//mir_test_sprite = LoadPcxSpriteList("ui_art\\supportw", 1);
 
 	const Point uiPosition = GetUIRectangle().position;
 
@@ -102,6 +107,7 @@ bool UiMainMenuDialog(const char *name, _mainmenu_selections *pdwResult, int att
 		while (MainMenuResult == MAINMENU_NONE) {
 			UiClearScreen();
 			UiPollAndRender();
+			//ClxDraw(*DiabloUiSurface(), { 100, 100 }, (*mir_test_sprite)[0]);
 			if (SDL_GetTicks() >= dwAttractTicks && (HaveDiabdat() || HaveHellfire())) {
 				MainMenuResult = MAINMENU_ATTRACT_MODE;
 			}
