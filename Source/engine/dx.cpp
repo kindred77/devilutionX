@@ -243,6 +243,24 @@ void RenderPresent()
 		if (ControlMode == ControlTypes::VirtualGamepad) {
 			RenderVirtualGamepad(renderer);
 		}
+
+		//*********************for kindred test***************************start
+		auto testSurf = LoadPNG("ui_art\\1407.png");
+		SDL_Rect dst = {0, 0, testSurf->w, testSurf->h};
+		if (renderer != nullptr)
+		{
+			auto testTexture = SDL_CreateTextureFromSurface(renderer, testSurf);
+			SDL_SetTextureColorMod(testTexture, 0, 0, 255);
+			SDL_SetTextureBlendMode(testTexture, SDL_BLENDMODE_MOD);
+			SDL_SetTextureAlphaMod(testTexture, 255);
+			SDL_RenderCopy(renderer, testTexture, NULL, &dst);
+		}
+		else
+		{
+			SDL_BlitScaled(testSurf, NULL, surface, &dst);
+		}
+		//*********************for kindred test***************************end
+
 		SDL_RenderPresent(renderer);
 
 		if (!*sgOptions.Graphics.vSync) {

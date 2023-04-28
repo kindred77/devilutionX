@@ -21,8 +21,6 @@
 #include "utils/stdcompat/algorithm.hpp"
 #include "utils/stdcompat/optional.hpp"
 #include "utils/ui_fwd.h"
-#include "utils/png.h"
-#include "SDL2/SDL_surface.h"
 
 namespace devilution {
 
@@ -137,11 +135,6 @@ void GmenuDrawMenuItem(const Surface &out, TMenuItem *pItem, int y)
 		ClxDraw(out, { x - 54, y + 51 }, sprite);
 		ClxDraw(out, { x + 4 + w, y + 51 }, sprite);
 	}
-
-	SDL_Rect src = {0, 0, 740, 500};
-	SDL_Rect dst = {0, 0, 740, 500};
-	SDL_BlitScaled(LoadPNG("ui_art\\1360.png"), &src, const_cast<SDL_Surface *>(out.surface), &dst);
-	
 }
 
 void GameMenuMove()
