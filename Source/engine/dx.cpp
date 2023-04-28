@@ -13,7 +13,6 @@
 #include "utils/display.h"
 #include "utils/log.hpp"
 #include "utils/sdl_wrap.h"
-
 #ifndef USE_SDL1
 #include "controls/touch/renderers.h"
 #endif
@@ -250,8 +249,8 @@ void RenderPresent()
 		if (renderer != nullptr)
 		{
 			auto testTexture = SDL_CreateTextureFromSurface(renderer, testSurf);
-			SDL_SetTextureColorMod(testTexture, 0, 0, 255);
-			SDL_SetTextureBlendMode(testTexture, SDL_BLENDMODE_MOD);
+			SDL_SetTextureColorMod(testTexture, 255, 0, 255);
+			SDL_SetTextureBlendMode(testTexture, SDL_BLENDMODE_BLEND);
 			SDL_SetTextureAlphaMod(testTexture, 255);
 			SDL_RenderCopy(renderer, testTexture, NULL, &dst);
 		}
@@ -281,6 +280,11 @@ void RenderPresent()
 	}
 	if (RenderDirectlyToOutputSurface)
 		PalSurface = GetOutputSurface();
+	//*********************for kindred test***************************start
+	//auto testSurf = LoadPNG("ui_art\\1407.png");
+	//SDL_Rect dst = {0, 0, static_cast<Uint16>(testSurf->w), static_cast<Uint16>(testSurf->h)};
+	//SDL_BlitScaled(testSurf, NULL, PalSurface, &dst);
+	//*********************for kindred test***************************end
 	LimitFrameRate();
 #endif
 }
