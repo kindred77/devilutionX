@@ -4,6 +4,76 @@
 
 namespace devilution {
 
+struct MirLibData {
+	// File information:
+	std::optional<MirLibPtr> ownedMirLib;
+	MirLibPtr mirLib;
+	size_t image_idx;
+};
+
+MirLibData *GetMirLibData(struct SDL_RWops *context)
+{
+	return reinterpret_cast<MirLibData *>(context->hidden.unknown.data1);
+}
+
+void SetMirLibData(struct SDL_RWops *context, MirLibData *data)
+{
+	context->hidden.unknown.data1 = data;
+}
+
+extern "C"
+{
+
+#ifndef USE_SDL1
+static Sint64 MirLibFileRwSize(struct SDL_RWops *context)
+{
+	return GetMirLibData(context)->size;
+}
+#endif
+
+static OffsetType MirLibFileRwSeek(struct SDL_RWops *context, OffsetType offset, int whence)
+{
+
+}
+
+static SizeType MirLibFileRwRead(struct SDL_RWops *context, void *ptr, SizeType size, SizeType maxnum)
+{
+    MirLibData &data = *GetMirLibData(context);
+    auto *out = static_cast<uint8_t *>(ptr);
+}
+
+static int MirLibFileRwClose(struct SDL_RWops *context)
+{
+
+}
+
+}// extern "C"
+
+SDL_RWops *SDL_RWops_FromMirLibFile(const MirLibPtr mirLib, size_t img_idx)
+{
+    auto result = std::make_unique<SDL_RWops>();
+	std::memset(result.get(), 0, sizeof(*result));
+
+#ifndef USE_SDL1
+	result->size = &MirLibFileRwSize;
+	result->type = SDL_RWOPS_UNKNOWN;
+#else
+	result->type = 0;
+#endif
+
+    result->seek = &MirLibFileRwSeek;
+	result->read = &MirLibFileRwRead;
+	result->write = nullptr;
+	result->close = &MirLibFileRwClose;
+
+    auto data = std::make_unique<MirLibData>();
+    data->mirLib = mirLib;
+    data->image_idx = img_idx;
+
+    SetMirLibData(result.get(), data.release());
+	return result.release();
+};
+
 bool MirLib::Initialize()
 {
     if (initialized)
@@ -82,7 +152,7 @@ MirLib::InitializeImage(int index)
 
     if (images == nullptr || index < 0 || index >= imageCnt)
     {
-        LogError("Can not initialize imge {}.", index);
+        LogError("Can not initialize image, mirlib do not initialized or invalid index {}.", index);
         return false;
     }
     
@@ -301,44 +371,33 @@ MirImage::readAndDecompress(
 }
 
 bool
-MirImage::loadImageData()
+MirImage::loadSurface()
 {
+    auto* rwopt = SDL_RWops_FromMirLibFile(mir_lib, index);
+    image_surface = std::shared_ptr<SDL_Surface>(IMG_LoadPNG_RW(rwopt));
     LogVerbose("debug: --55555---");
     //image data
-    {
-        auto compressed_data = std::unique_ptr<byte[]>(new byte[length]());
-        LogVerbose("debug: --6666---");
-        if (!MirLib::Read(
-            logged_fstream.get(),
-            file_name,
-            reinterpret_cast<char *>(compressed_data.get()),
-            "image data",
-            length)
-        )
-        {
-            return false;
-        }
-        LogVerbose("debug: --7777---");
-        if (!readAndDecompress(
-            reinterpret_cast<const unsigned char *>(compressed_data.get()),
-            length, image_data))
-        {
-            LogError("File {}. Can not decompress image data. Image index {}.",
-                file_name.c_str(),
-                index);
-            return false;
-        }
-    }
+    //not compressed
+	image_data = std::unique_ptr<byte[]>(new byte[length]());
+	LogVerbose("debug: --6666---");
+	if (!MirLib::Read(
+	        logged_fstream.get(),
+	        file_name,
+	        reinterpret_cast<char *>(image_data.get()),
+	        "image data",
+	        length)) {
+		return false;
+	}
 
-    //mask image data
+	//mask image data
     if (hasMask)
     {
-        auto compressed_data = std::unique_ptr<byte[]>(new byte[maskLength]());
+        mask_data = std::unique_ptr<byte[]>(new byte[maskLength]());
 
         if (!MirLib::Read(
             logged_fstream.get(),
             file_name,
-            reinterpret_cast<char *>(compressed_data.get()),
+            reinterpret_cast<char *>(mask_data.get()),
             "mask image data",
             maskLength)
         )
@@ -346,15 +405,16 @@ MirImage::loadImageData()
             return false;
         }
 
-        if (!readAndDecompress(
-            reinterpret_cast<const unsigned char *>(compressed_data.get()),
-            maskLength, mask_data))
-        {
-            LogError("File {}. Can not decompress mask image data. Image index {}.",
-                file_name.c_str(),
-                index);
-            return false;
-        }
+        //not compressed
+        // if (!readAndDecompress(
+        //     reinterpret_cast<const unsigned char *>(compressed_data.get()),
+        //     maskLength, mask_data))
+        // {
+        //     LogError("File {}. Can not decompress mask image data. Image index {}.",
+        //         file_name.c_str(),
+        //         index);
+        //     return false;
+        // }
     }
 
     return true;
@@ -374,7 +434,7 @@ MirImage::Initialize()
         return false;
     }
     LogVerbose("debug: --44444---");
-    if (!loadImageData())
+    if (!loadSurface())
     {
         return false;
     }

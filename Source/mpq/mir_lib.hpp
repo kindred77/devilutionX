@@ -3,8 +3,13 @@
 #include "utils/logged_fstream.hpp"
 #include "utils/log.hpp"
 #include "utils/stdcompat/cstddef.hpp"
+#include "utils/png.hpp"
 
 namespace devilution {
+
+class MirLib;
+
+SDL_RWops *SDL_RWops_FromMirLibFile(const MirLib &mirLib, size_t img_idx);
 
 class MirImage;
 
@@ -65,8 +70,10 @@ public:
     }
 };
 
-class MirImage {
+using MirLibPtr = std::shared_ptr<MirLib>;
 
+class MirImage {
+    MirLibPtr mir_lib;
     bool initialized = false;
 
     short width, height, x, y, shadowX, shadowY;
@@ -85,22 +92,26 @@ class MirImage {
     //long cleanTime;
     //Size trueSize;
 
-    std::shared_ptr<byte[]> image_data = nullptr;
-    std::shared_ptr<byte[]> mask_data = nullptr;
+    //std::shared_ptr<byte[]> image_data = nullptr;
+    //std::shared_ptr<byte[]> mask_data = nullptr;
+
+    std::shared_ptr<SDL_Surface> image_surface = nullptr;
+    std::shared_ptr<SDL_Surface> mask_surface = nullptr;
 
     const int index = -1;
     std::unique_ptr<LoggedFStream> logged_fstream;
     const std::string file_name;
 
     bool initHeader();
-    bool loadImageData();
+    bool loadSurface();
 
-    bool readAndDecompress(const unsigned char * compressed_data,
-        int data_length,
-        std::shared_ptr<byte[]>& target_data);
+    // bool readAndDecompress(const unsigned char * compressed_data,
+    //     int data_length,
+    //     std::shared_ptr<byte[]>& target_data);
 public:
-    explicit MirImage(const int index_, LoggedFStream* logged_fstream_, const std::string file_name_)
-    : index(index_)
+    explicit MirImage(const MirLibPtr mir_lib_, const int index_, LoggedFStream* logged_fstream_, const std::string file_name_)
+    : mir_lib(mir_lib_)
+    , index(index_)
     , logged_fstream(std::move(logged_fstream_))
     , file_name(file_name_)
     {
@@ -143,9 +154,14 @@ public:
         return index;
     }
 
-    inline std::shared_ptr<byte[]> GetData() const
+    inline std::shared_ptr<SDL_Surface> GetSurface() const
     {
-        return image_data;
+        return image_surface;
+    }
+
+    inline std::shared_ptr<SDL_Surface> GetMaskSurface() const
+    {
+        return mask_surface;
     }
 };
 

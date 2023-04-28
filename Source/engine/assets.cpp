@@ -206,4 +206,10 @@ SDL_RWops *OpenAssetAsSdlRwOps(const char *filename, bool threadsafe)
 #endif
 }
 
+SDL_RWops *OpenMirLibAsSdlRwOps(const char *filename, size_t img_idx)
+{
+	MirLib mir_lib{filename};
+	return AssetHandle { SDL_RWops_FromMirLibFile(mir_lib, img_idx) };
+}
+
 } // namespace devilution

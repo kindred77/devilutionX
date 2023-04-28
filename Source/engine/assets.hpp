@@ -245,4 +245,7 @@ AssetHandle OpenAsset(const char *filename, size_t &fileSize, bool threadsafe = 
 
 SDL_RWops *OpenAssetAsSdlRwOps(const char *filename, bool threadsafe = false);
 
+
+SDL_RWops *OpenMirLibAsSdlRwOps(const char *filename, bool threadsafe = false);
+
 } // namespace devilution
