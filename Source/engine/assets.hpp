@@ -16,6 +16,11 @@
 
 namespace devilution {
 
+class MirLib;
+using MirLibPtr = std::shared_ptr<MirLib>;
+
+extern std::unordered_map<std::string, MirLibPtr> mir_libs;
+
 #ifdef UNPACKED_MPQS
 struct AssetRef {
 	static constexpr size_t PathBufSize = 4088;
@@ -246,6 +251,6 @@ AssetHandle OpenAsset(const char *filename, size_t &fileSize, bool threadsafe = 
 SDL_RWops *OpenAssetAsSdlRwOps(const char *filename, bool threadsafe = false);
 
 
-SDL_RWops *OpenMirLibAsSdlRwOps(const char *filename, bool threadsafe = false);
+SDL_RWops *OpenMirLibAsSdlRwOps(const char *mir_lib_filename, bool threadsafe = false);
 
 } // namespace devilution

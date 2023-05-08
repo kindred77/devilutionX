@@ -172,6 +172,10 @@ if(SUPPORTS_MPQ)
     mpq/mpq_writer.cpp)
 endif()
 
+# mir lib support
+list(APPEND libdevilutionx_SRCS
+    mpq/mir_lib.cpp)
+
 if(SUPPORTS_MPQ OR NOT NONET)
   list(APPEND libdevilutionx_DEPS PKWare)
   list(APPEND libdevilutionx_SRCS encrypt.cpp)

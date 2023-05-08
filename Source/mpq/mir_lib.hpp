@@ -3,15 +3,11 @@
 #include "utils/logged_fstream.hpp"
 #include "utils/log.hpp"
 #include "utils/stdcompat/cstddef.hpp"
-#include "utils/png.hpp"
 
 namespace devilution {
 
-class MirLib;
-
-SDL_RWops *SDL_RWops_FromMirLibFile(const MirLib &mirLib, size_t img_idx);
-
 class MirImage;
+using MirImagePtr = std::shared_ptr<MirImage>;
 
 class MirLib {
     const int LibVersion = 2; 
@@ -19,13 +15,19 @@ class MirLib {
     int imageCnt = 0;
     const std::string file_name;
     std::unique_ptr<LoggedFStream> logged_fstream = nullptr;
-    std::unique_ptr<MirImage*[]> images = nullptr;
+    std::unique_ptr<MirImagePtr[]> images = nullptr;
     std::unique_ptr<int[]> indexList;
 public:
     explicit MirLib(const char *file_name_)
     : file_name(std::move(file_name_))
     {
 
+    }
+
+    virtual ~MirLib()
+    {
+        initialized = false;
+        imageCnt = 0;
     }
 
     bool Initialize();
@@ -35,7 +37,7 @@ public:
         return file_name.c_str();
     }
 
-    MirImage* operator[](const int idx)
+    MirImagePtr operator[](const int idx)
 	{
         LogVerbose("debug: 000000--image idx: {}---file offset: {}", idx, indexList[idx]);
         if (InitializeImage(idx))
@@ -72,6 +74,8 @@ public:
 
 using MirLibPtr = std::shared_ptr<MirLib>;
 
+SDL_RWops *SDL_RWops_FromMirLibFile(MirLibPtr mirLib, size_t img_idx);
+
 class MirImage {
     MirLibPtr mir_lib;
     bool initialized = false;
@@ -83,11 +87,11 @@ class MirImage {
     //bool textureValid;
     //Texture image;
         //layer 2:
-    short maskWidth, maskHeight, maskX, maskY;
-    int maskLength;
+    //short maskWidth, maskHeight, maskX, maskY;
+    //int maskLength;
 
     //Texture maskImage;
-    bool hasMask;
+    //bool hasMask;
 
     //long cleanTime;
     //Size trueSize;
@@ -95,15 +99,15 @@ class MirImage {
     //std::shared_ptr<byte[]> image_data = nullptr;
     //std::shared_ptr<byte[]> mask_data = nullptr;
 
-    std::shared_ptr<SDL_Surface> image_surface = nullptr;
-    std::shared_ptr<SDL_Surface> mask_surface = nullptr;
+    //std::shared_ptr<SDL_Surface> image_surface = nullptr;
+    //std::shared_ptr<SDL_Surface> mask_surface = nullptr;
 
     const int index = -1;
     std::unique_ptr<LoggedFStream> logged_fstream;
     const std::string file_name;
 
     bool initHeader();
-    bool loadSurface();
+    //bool loadSurface();
 
     // bool readAndDecompress(const unsigned char * compressed_data,
     //     int data_length,
@@ -116,6 +120,13 @@ public:
     , file_name(file_name_)
     {
     }
+
+    virtual ~MirImage()
+    {
+        initialized = false;
+    }
+
+    bool getData(void* data);
 
     bool Initialize();
 
@@ -154,15 +165,15 @@ public:
         return index;
     }
 
-    inline std::shared_ptr<SDL_Surface> GetSurface() const
-    {
-        return image_surface;
-    }
+    // inline std::shared_ptr<SDL_Surface> GetSurface() const
+    // {
+    //     return image_surface;
+    // }
 
-    inline std::shared_ptr<SDL_Surface> GetMaskSurface() const
-    {
-        return mask_surface;
-    }
+    // inline std::shared_ptr<SDL_Surface> GetMaskSurface() const
+    // {
+    //     return mask_surface;
+    // }
 };
 
 }

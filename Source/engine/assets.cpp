@@ -13,6 +13,7 @@
 #ifndef UNPACKED_MPQS
 #include "mpq/mpq_sdl_rwops.hpp"
 #endif
+#include "mpq/mir_lib.hpp"
 
 namespace devilution {
 
@@ -206,10 +207,29 @@ SDL_RWops *OpenAssetAsSdlRwOps(const char *filename, bool threadsafe)
 #endif
 }
 
-SDL_RWops *OpenMirLibAsSdlRwOps(const char *filename, size_t img_idx)
+//*************for mir lib***********start
+std::unordered_map<std::string, MirLibPtr> mir_libs;
+
+MirLibPtr FindMirLib(const char *mir_lib_filename)
 {
-	MirLib mir_lib{filename};
-	return AssetHandle { SDL_RWops_FromMirLibFile(mir_lib, img_idx) };
+	auto it = mir_libs.find(mir_lib_filename);
+	if (it != mir_libs.end())
+	{
+		return std::get<1>(*it);
+	}
+	else
+	{
+		auto mir_lib = std::make_shared<MirLib>(mir_lib_filename);
+		mir_libs.insert({mir_lib_filename, mir_lib});
+		return mir_lib;
+	}
 }
+
+SDL_RWops *OpenMirLibAsSdlRwOps(const char *mir_lib_filename, size_t img_idx)
+{
+	auto mir_lib = FindMirLib(mir_lib_filename);
+	return SDL_RWops_FromMirLibFile(mir_lib, img_idx);
+}
+//*************for mir lib***********end
 
 } // namespace devilution
