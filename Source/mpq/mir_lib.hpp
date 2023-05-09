@@ -9,14 +9,17 @@
 
 namespace devilution {
 
+struct MirImageHeader
+{
+    short width, height, x, y, shadowX, shadowY;
+    byte shadow;
+    int length;
+};
+
 struct MirImage
 {
+    MirImageHeader header;
 	bool initialized = false;
-
-	short width, height, x, y, shadowX, shadowY;
-	byte shadow;
-	int length;
-
 	const int index = -1;
 };
 
