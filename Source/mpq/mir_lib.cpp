@@ -32,18 +32,6 @@ void SetMirLibData(struct SDL_RWops *context, MirLibData *data)
 extern "C"
 {
 
-// #ifndef USE_SDL1
-// static Sint64 MirLibFileRwSize(struct SDL_RWops *context)
-// {
-// 	return GetMirLibData(context)->size;
-// }
-// #endif
-
-// static OffsetType MirLibFileRwSeek(struct SDL_RWops *context, OffsetType offset, int whence)
-// {
-
-// }
-
 static SizeType MirLibFileRwRead(struct SDL_RWops *context, void *ptr, SizeType size, SizeType maxnum)
 {
     MirLibData &data = *GetMirLibData(context);
@@ -53,18 +41,13 @@ static SizeType MirLibFileRwRead(struct SDL_RWops *context, void *ptr, SizeType 
         SDL_SetError("MirLib: %s, does not initialized.", mir_lib->GetFilName());
 		return 0;
     }
-    if (!mir_lib->operator[](data.image_idx)->Initialize())
+
+    if (!mir_lib->getImageData(data.image_idx, ptr))
     {
-        SDL_SetError("MirImage: %d, MirLib: %s, does not initialized.", data.image_idx, mir_lib->GetFilName());
+        SDL_SetError("MirImage: %zu, MirLib: %s, can not get data.", data.image_idx, mir_lib->GetFilName());
 		return 0;
     }
-    ;
-    if (!mir_lib->operator[](data.image_idx)->getData(ptr))
-    {
-        SDL_SetError("MirImage: %d, MirLib: %s, can not get data.", data.image_idx, mir_lib->GetFilName());
-		return 0;
-    }
-    return mir_lib->operator[](data.image_idx)->GetLength();
+    return mir_lib->operator[](data.image_idx)->length;
 }
 
 static int MirLibFileRwClose(struct SDL_RWops *context)
@@ -108,6 +91,7 @@ SDL_RWops *SDL_RWops_FromMirLibFile(MirLibPtr mirLib, size_t img_idx)
 
 bool MirLib::Initialize()
 {
+    std::lock_guard<std::mutex> lock(mutex);
     if (initialized)
     {
         return true;
@@ -175,8 +159,9 @@ bool MirLib::Initialize()
 };
 
 bool
-MirLib::InitializeImage(int index)
+MirLib::initializeImage(int index)
 {
+    std::lock_guard<std::mutex> lock(mutex);
     if (!initialized)
     {
         return false;
@@ -188,12 +173,11 @@ MirLib::InitializeImage(int index)
         return false;
     }
     
-    if (images[index] == nullptr || !images[index]->IsInitialized())
+    if (images[index] == nullptr || !images[index]->initialized)
     {
         LogInfo("debug: --111111111---image idx: {}---file offset: {}", index, indexList[index]);
         logged_fstream->Seekp(indexList[index], std::ios::beg);
-        images[index] = std::make_shared<MirImage>(std::shared_ptr<MirLib>(this), index, logged_fstream.get(), file_name);
-        if (!images[index]->Initialize())
+        if (!initImageHeader(images[index]))
         {
             LogError("Invalid mir lib file {}. Image init failed: {}.", file_name.c_str(), index);
             return false;
@@ -204,12 +188,13 @@ MirLib::InitializeImage(int index)
 }
 
 bool
-MirImage::initHeader()
+MirLib::initImageHeader(MirImagePtr& image)
 {
+    std::lock_guard<std::mutex> lock(mutex);
     if (!MirLib::Read(
         logged_fstream.get(),
         file_name,
-        reinterpret_cast<char *>(&width),
+        reinterpret_cast<char *>(&image->width),
         "image width",
         sizeof(short))
     )
@@ -220,7 +205,7 @@ MirImage::initHeader()
     if (!MirLib::Read(
         logged_fstream.get(),
         file_name,
-        reinterpret_cast<char *>(&height),
+        reinterpret_cast<char *>(&image->height),
         "image height",
         sizeof(short))
     )
@@ -231,7 +216,7 @@ MirImage::initHeader()
     if (!MirLib::Read(
         logged_fstream.get(),
         file_name,
-        reinterpret_cast<char *>(&x),
+        reinterpret_cast<char *>(&image->x),
         "image x",
         sizeof(short))
     )
@@ -242,7 +227,7 @@ MirImage::initHeader()
     if (!MirLib::Read(
         logged_fstream.get(),
         file_name,
-        reinterpret_cast<char *>(&y),
+        reinterpret_cast<char *>(&image->y),
         "image y",
         sizeof(short))
     )
@@ -253,7 +238,7 @@ MirImage::initHeader()
     if (!MirLib::Read(
         logged_fstream.get(),
         file_name,
-        reinterpret_cast<char *>(&shadowX),
+        reinterpret_cast<char *>(&image->shadowX),
         "image shadowX",
         sizeof(short))
     )
@@ -264,7 +249,7 @@ MirImage::initHeader()
     if (!MirLib::Read(
         logged_fstream.get(),
         file_name,
-        reinterpret_cast<char *>(&shadowY),
+        reinterpret_cast<char *>(&image->shadowY),
         "image shadowY",
         sizeof(short))
     )
@@ -275,7 +260,7 @@ MirImage::initHeader()
     if (!MirLib::Read(
         logged_fstream.get(),
         file_name,
-        reinterpret_cast<char *>(&shadow),
+        reinterpret_cast<char *>(&image->shadow),
         "image shadow",
         sizeof(byte))
     )
@@ -286,159 +271,36 @@ MirImage::initHeader()
     if (!MirLib::Read(
         logged_fstream.get(),
         file_name,
-        reinterpret_cast<char *>(&length),
+        reinterpret_cast<char *>(&image->length),
         "image length",
         sizeof(int32_t))
     )
     {
         return false;
     }
-    //check if there's a second layer and read it
-    // hasMask = ((shadow >> 7) == static_cast<byte>(1)) ? true : false;
-    // if (hasMask)
-    // {
-    //     byte tmpLength;
-    //     if (!MirLib::Read(
-    //         logged_fstream.get(),
-    //         file_name,
-    //         reinterpret_cast<char *>(&tmpLength),
-    //         "image mask tmp length",
-    //         sizeof(byte))
-    //     )
-    //     {
-    //         return false;
-    //     }
-
-    //     if (!MirLib::Read(
-    //         logged_fstream.get(),
-    //         file_name,
-    //         reinterpret_cast<char *>(&maskWidth),
-    //         "image mask width",
-    //         sizeof(int16_t))
-    //     )
-    //     {
-    //         return false;
-    //     }
-
-    //     if (!MirLib::Read(
-    //         logged_fstream.get(),
-    //         file_name,
-    //         reinterpret_cast<char *>(&maskHeight),
-    //         "image mask height",
-    //         sizeof(int16_t))
-    //     )
-    //     {
-    //         return false;
-    //     }
-
-    //     if (!MirLib::Read(
-    //         logged_fstream.get(),
-    //         file_name,
-    //         reinterpret_cast<char *>(&maskX),
-    //         "image mask x",
-    //         sizeof(int16_t))
-    //     )
-    //     {
-    //         return false;
-    //     }
-
-    //     if (!MirLib::Read(
-    //         logged_fstream.get(),
-    //         file_name,
-    //         reinterpret_cast<char *>(&maskY),
-    //         "image mask y",
-    //         sizeof(int16_t))
-    //     )
-    //     {
-    //         return false;
-    //     }
-
-    //     if (!MirLib::Read(
-    //         logged_fstream.get(),
-    //         file_name,
-    //         reinterpret_cast<char *>(&maskLength),
-    //         "image mask length",
-    //         sizeof(int32_t))
-    //     )
-    //     {
-    //         return false;
-    //     }
-    // }
-
+    image->initialized = true;
     return true;
 }
 
-// bool
-// MirImage::readAndDecompress(
-//     const unsigned char * compressed_data,
-//     int data_length,
-//     std::shared_ptr<byte[]>& target_data
-//     )
-// {
-//     byte * decompressed_data = nullptr;
-//     if (!gzip_decompress(
-//         compressed_data,
-//         data_length,
-//         reinterpret_cast<unsigned char *>(decompressed_data)))
-//     {
-//         LogError("Image data decompression failed {}.", index);
-//         return false;
-//     }
-//     LogInfo("get decompressed data length: {}", sizeof(decompressed_data));
-//     // byte * decompressed_data = nullptr;
-//     // uLong decomp_data_len = 0;
-//     // if (!gzip_decompress(
-//     //     const_cast<char *>(compressed_data),
-//     //     data_length,
-//     //     reinterpret_cast<char *>(decompressed_data),
-//     //     decomp_data_len))
-//     // {
-//     //     LogError("Image data decompression failed {}.", index);
-//     //     return false;
-//     // }
-
-//     target_data = std::shared_ptr<byte[]>(decompressed_data);
-
-//     return true;
-// }
-
-bool MirImage::getData(void* data)
+bool MirLib::getImageData(int index, void* data)
 {
-    auto *out = static_cast<char *>(data);
-    if (!MirLib::Read(
-	        logged_fstream.get(),
-	        mir_lib->GetFilName(),
-	        out,
-	        "image data",
-	        length))
-    {
-		return false;
-	}
-}
-
-bool
-MirImage::Initialize()
-{
-    LogVerbose("debug: --222222---");
-    if (initialized)
-    {
-        return true;
-    }
-    LogVerbose("debug: --33333---");
-    if (!initHeader())
+    std::lock_guard<std::mutex> lock(mutex);
+    if (!initializeImage(index))
     {
         return false;
     }
-    LogVerbose("debug: --44444---");
-    // if (!loadSurface())
-    // {
-    //     return false;
-    // }
-    initialized = true;
+    auto *out = static_cast<char *>(data);
+    if (!MirLib::Read(
+	        logged_fstream.get(),
+	        file_name,
+	        out,
+	        "image data",
+	        images[index]->length))
+    {
+		return false;
+	}
 
-    LogInfo("Image initialized successfully, idx: {}, width: {}, height: {}, x: {}, y: {}.", index, width, height, x, y);
-
-    return initialized;
+    return true;
 }
 
 }

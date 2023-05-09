@@ -39,7 +39,7 @@ namespace {
 	return -1;
 }
 
-bool gzip_decompress(const unsigned char *src, uInt srcLen, unsigned char * dst/*, uInt dstLen*/)
+[[maybe_unused]] bool gzip_decompress(const unsigned char *src, uInt srcLen, unsigned char * dst/*, uInt dstLen*/)
 {
 	const int COPY_BUFFER_SIZE = srcLen*4;
 	z_stream strm;
@@ -106,7 +106,7 @@ bool gzip_decompress(const unsigned char *src, uInt srcLen, unsigned char * dst/
 }
 
 
-bool gzip_decompress2(
+[[maybe_unused]] bool gzip_decompress2(
 	char *src, uLong srcLen, 
 	char *dst, uLong& dstLen, 
 	uLong copy_buffer_size = 10240,
