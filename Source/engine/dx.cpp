@@ -21,6 +21,8 @@
 #include <3ds.h>
 #endif
 
+#include <iostream>
+
 namespace devilution {
 
 int refreshDelay;
@@ -244,7 +246,11 @@ void RenderPresent()
 		}
 
 		//*********************for kindred test***************************start
-		auto testSurf = LoadPNG("ui_art\\1407.png");
+		//auto testSurf = LoadPNG("ui_art\\1407.png");
+		//auto testSurf = LoadPNGFromMirLib("assets/ui_art/Prguse2_png.Lib", 542);
+		auto testSurf = LoadPNGFromMemMirLib("assets/ui_art/Prguse2_png.Lib", 542);
+		//std::cout << "------0000" << std::endl;
+		//std::cout << "------" << testSurf->w << "------------" << testSurf->h << std::endl;
 		SDL_Rect dst = {0, 0, testSurf->w, testSurf->h};
 		if (renderer != nullptr)
 		{

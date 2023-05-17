@@ -14,12 +14,15 @@
 #include "utils/str_cat.hpp"
 #include "utils/string_or_view.hpp"
 
+#include <boost/compute/detail/lru_cache.hpp>
+
 namespace devilution {
 
 class MirLib;
 using MirLibPtr = std::shared_ptr<MirLib>;
 
-extern std::unordered_map<std::string, MirLibPtr> mir_libs;
+using MirLibLRUMap = boost::compute::detail::lru_cache<std::string, MirLibPtr>;
+extern MirLibLRUMap mir_libs;
 
 #ifdef UNPACKED_MPQS
 struct AssetRef {
@@ -251,6 +254,8 @@ AssetHandle OpenAsset(const char *filename, size_t &fileSize, bool threadsafe = 
 SDL_RWops *OpenAssetAsSdlRwOps(const char *filename, bool threadsafe = false);
 
 
-SDL_RWops *OpenMirLibAsSdlRwOps(const char *mir_lib_filename, bool threadsafe = false);
+//SDL_RWops *OpenMirLibAsSdlRwOps(const char *mir_lib_filename, size_t img_idx, bool threadsafe = false);
+
+SDL_RWops *OpenMirLibInMemAsSdlRwOps(const char *mir_lib_filename, size_t img_idx, bool threadsafe = false);
 
 } // namespace devilution

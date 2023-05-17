@@ -2,92 +2,123 @@
 #include "utils/file_util.h"
 #include "utils/gzlib_util.hpp"
 
-#ifndef USE_SDL1
-using OffsetType = Sint64;
-using SizeType = size_t;
-#else
-using OffsetType = int;
-using SizeType = int;
-#endif
+// #ifndef USE_SDL1
+// using OffsetType = Sint64;
+// using SizeType = size_t;
+// #else
+// using OffsetType = int;
+// using SizeType = int;
+// #endif
 
 namespace devilution {
 
-struct MirLibData {
-	// File information:
-	std::optional<MirLibPtr> ownedMirLib;
-	//MirLibPtr mirLib;
-	size_t image_idx;
-};
+// struct MirLibData {
+// 	// File information:
+// 	std::optional<MirLibPtr> ownedMirLib;
+// 	//MirLibPtr mirLib;
+// 	size_t image_idx;
+// };
 
-MirLibData *GetMirLibData(struct SDL_RWops *context)
-{
-	return reinterpret_cast<MirLibData *>(context->hidden.unknown.data1);
-}
+// MirLibData *GetMirLibData(struct SDL_RWops *context)
+// {
+// 	return reinterpret_cast<MirLibData *>(context->hidden.unknown.data1);
+// }
 
-void SetMirLibData(struct SDL_RWops *context, MirLibData *data)
-{
-	context->hidden.unknown.data1 = data;
-}
+// void SetMirLibData(struct SDL_RWops *context, MirLibData *data)
+// {
+// 	context->hidden.unknown.data1 = data;
+// }
 
-extern "C"
-{
+// extern "C"
+// {
 
-static SizeType MirLibFileRwRead(struct SDL_RWops *context, void *ptr, SizeType size, SizeType maxnum)
-{
-    MirLibData &data = *GetMirLibData(context);
-    auto mir_lib = data.ownedMirLib->get();
-    if (!mir_lib->Initialize())
-    {
-        SDL_SetError("MirLib: %s, does not initialized.", mir_lib->GetFilName());
-		return 0;
-    }
+// static Sint64 MirLibFileRwSize(struct SDL_RWops *context)
+// {
+//     std::cout << "MirLibFileRwSize" << std::endl;
+//     MirLibData &data = *GetMirLibData(context);
+//     auto mir_lib = data.ownedMirLib->get();
+//     if (!mir_lib->operator[](data.image_idx)->initialized)
+//     {
+//         SDL_SetError("MirImage: %zu, MirLib: %s, can not initialize the image.", data.image_idx, mir_lib->GetFilName());
+// 		return -1;
+//     }
+// 	return mir_lib->operator[](data.image_idx)->header.length;
+// }
 
-    if (!mir_lib->getImageData(data.image_idx, ptr))
-    {
-        SDL_SetError("MirImage: %zu, MirLib: %s, can not get data.", data.image_idx, mir_lib->GetFilName());
-		return 0;
-    }
-    return mir_lib->operator[](data.image_idx)->header.length;
-}
+// static OffsetType MirLibFileRwSeek(struct SDL_RWops *context, OffsetType offset, int whence)
+// {
+//     std::cout << "MirLibFileRwSeek" << std::endl;
+// 	return -1;
+// }
 
-static int MirLibFileRwClose(struct SDL_RWops *context)
-{
-    MirLibData *data = GetMirLibData(context);
-	//data->mpqArchive->CloseBlockOffsetTable(data->fileNumber);
-    //data->mirLib->
-	delete data;
-	delete context;
-	return 0;
-}
+// static SizeType MirLibFileRwRead(struct SDL_RWops *context, void *ptr, SizeType size, SizeType maxnum)
+// {
+//     std::cout << "MirLibFileRwRead" << std::endl;
+//     MirLibData &data = *GetMirLibData(context);
+//     std::cout << "MirLibFileRwRead------00000" << std::endl;
+//     auto mir_lib = data.ownedMirLib->get();
+//     std::cout << "MirLibFileRwRead------11111" << std::endl;
+//     // if (!mir_lib->Initialize())
+//     // {
+//     //     std::cout << "MirLibFileRwRead----0000000" << std::endl;
+//     //     SDL_SetError("MirLib: %s, does not initialized.", mir_lib->GetFilName());
+// 	// 	return 0;
+//     // }
 
-}// extern "C"
+//     if (!mir_lib->getImageData(data.image_idx, ptr))
+//     {
+//         std::cout << "MirLibFileRwRead----22222" << std::endl;
+//         SDL_SetError("MirImage: %zu, MirLib: %s, can not get data.", data.image_idx, mir_lib->GetFilName());
+// 		return 0;
+//     }
+//     std::cout << "MirLibFileRwRead-----data.image_idx: " << data.image_idx << ", length: " << mir_lib->operator[](data.image_idx)->header.length << std::endl;
+//     std::cout << "MirLibFileRwRead-----width: " << mir_lib->operator[](data.image_idx)->header.width << std::endl;
+//     std::cout << "MirLibFileRwRead-----height: " << mir_lib->operator[](data.image_idx)->header.height << std::endl;
+//     std::cout << "MirLibFileRwRead-----size: " << size << std::endl;
+//     std::cout << "MirLibFileRwRead-----maxnum: " << maxnum << std::endl;
+//     //return mir_lib->operator[](data.image_idx)->header.length;
+//     return 1;
+// }
 
-SDL_RWops *SDL_RWops_FromMirLibFile(MirLibPtr mirLib, size_t img_idx)
-{
-    auto result = std::make_unique<SDL_RWops>();
-	std::memset(result.get(), 0, sizeof(*result));
+// static int MirLibFileRwClose(struct SDL_RWops *context)
+// {
+//     std::cout << "MirLibFileRwClose" << std::endl;
+//     MirLibData *data = GetMirLibData(context);
+// 	//data->mpqArchive->CloseBlockOffsetTable(data->fileNumber);
+//     //data->mirLib->
+// 	delete data;
+// 	delete context;
+// 	return 0;
+// }
 
-#ifndef USE_SDL1
-	//result->size = &MirLibFileRwSize;
-    result->size = nullptr;
-	result->type = SDL_RWOPS_UNKNOWN;
-#else
-	result->type = 0;
-#endif
+// }// extern "C"
 
-    //result->seek = &MirLibFileRwSeek;
-    result->seek = nullptr;
-	result->read = &MirLibFileRwRead;
-	result->write = nullptr;
-	result->close = &MirLibFileRwClose;
+// SDL_RWops *SDL_RWops_FromMirLibFile(MirLibPtr mirLib, size_t img_idx)
+// {
+//     auto result = std::make_unique<SDL_RWops>();
+// 	std::memset(result.get(), 0, sizeof(*result));
 
-    auto data = std::make_unique<MirLibData>();
-    data->ownedMirLib = mirLib;
-    data->image_idx = img_idx;
+// #ifndef USE_SDL1
+// 	result->size = &MirLibFileRwSize;
+//     //result->size = nullptr;
+// 	result->type = SDL_RWOPS_UNKNOWN;
+// #else
+// 	result->type = 0;
+// #endif
 
-    SetMirLibData(result.get(), data.release());
-	return result.release();
-};
+//     result->seek = &MirLibFileRwSeek;
+//     //result->seek = nullptr;
+// 	result->read = &MirLibFileRwRead;
+// 	result->write = nullptr;
+// 	result->close = &MirLibFileRwClose;
+
+//     auto data = std::make_unique<MirLibData>();
+//     data->ownedMirLib = mirLib;
+//     data->image_idx = img_idx;
+
+//     SetMirLibData(result.get(), data.release());
+// 	return result.release();
+// };
 
 bool MirLib::Initialize()
 {
@@ -139,7 +170,7 @@ bool MirLib::Initialize()
         return false;
     }
 
-    images = std::unique_ptr<MirImagePtr[]>(new MirImagePtr[imageCnt]);
+    images = std::make_unique<MirImageLRUMap>(MIRIMAGE_LRUCACHE_SIZE);
 
     indexList = std::unique_ptr<int[]>(new int[imageCnt]());
     if (!Read(
@@ -154,32 +185,105 @@ bool MirLib::Initialize()
     }
 
     initialized=true;
-    LogInfo("File initialized successfully, path: {}, libVersion: {}, imageCnt: {}", file_name.c_str(), libVersion, imageCnt);
+    LogDebug("File initialized successfully, path: {}, libVersion: {}, imageCnt: {}", file_name.c_str(), libVersion, imageCnt);
     return initialized;
 };
 
 bool
 MirLib::initImageHeader(MirImagePtr& image)
 {
-    std::lock_guard<std::mutex> lock(mutex);
+    if (!image)
+    {
+        image = std::make_shared<MirImage>();
+    }
+    
     if (!MirLib::Read(
         logged_fstream.get(),
         file_name,
-        reinterpret_cast<char *>(&image->header),
-        "image header",
-        sizeof(MirImageHeader))
+        reinterpret_cast<char *>(&image->header.width),
+        "image width",
+        sizeof(short))
     )
     {
         return false;
     }
-    image->initialized = true;
+    if (!MirLib::Read(
+        logged_fstream.get(),
+        file_name,
+        reinterpret_cast<char *>(&image->header.height),
+        "image height",
+        sizeof(short))
+    )
+    {
+        return false;
+    }
+    if (!MirLib::Read(
+        logged_fstream.get(),
+        file_name,
+        reinterpret_cast<char *>(&image->header.x),
+        "image x",
+        sizeof(short))
+    )
+    {
+        return false;
+    }
+    if (!MirLib::Read(
+        logged_fstream.get(),
+        file_name,
+        reinterpret_cast<char *>(&image->header.y),
+        "image y",
+        sizeof(short))
+    )
+    {
+        return false;
+    }
+    if (!MirLib::Read(
+        logged_fstream.get(),
+        file_name,
+        reinterpret_cast<char *>(&image->header.shadowX),
+        "image shadowX",
+        sizeof(short))
+    )
+    {
+        return false;
+    }
+    if (!MirLib::Read(
+        logged_fstream.get(),
+        file_name,
+        reinterpret_cast<char *>(&image->header.shadowY),
+        "image shadowY",
+        sizeof(short))
+    )
+    {
+        return false;
+    }
+    if (!MirLib::Read(
+        logged_fstream.get(),
+        file_name,
+        reinterpret_cast<char *>(&image->header.shadow),
+        "image shadow",
+        sizeof(byte))
+    )
+    {
+        return false;
+    }
+    if (!MirLib::Read(
+        logged_fstream.get(),
+        file_name,
+        reinterpret_cast<char *>(&image->header.length),
+        "image length",
+        sizeof(int))
+    )
+    {
+        return false;
+    }
+    LogDebug("x: {}, y: {}, width: {}, height: {}, length: {}", image->header.x, image->header.y, image->header.width, image->header.height, image->header.length);
     return true;
 }
 
 bool
 MirLib::initializeImage(int index)
 {
-    std::lock_guard<std::mutex> lock(mutex);
     if (!initialized)
     {
         return false;
@@ -191,44 +295,60 @@ MirLib::initializeImage(int index)
         return false;
     }
     
-    if (images[index] == nullptr || !images[index]->initialized)
+    if (!images->contains(index) || !images->get(index).get()->initialized)
     {
-        LogInfo("debug: --111111111---image idx: {}---file offset: {}", index, indexList[index]);
-        logged_fstream->Seekp(indexList[index], std::ios::beg);
-        if (!initImageHeader(images[index]))
+        if (!logged_fstream->Seekp(indexList[index], std::ios::beg))
         {
-            LogError("Invalid mir lib file {}. Image init failed: {}.", file_name.c_str(), index);
+            LogError("Can not seek to {}, the mirlib file {} may be invalid.", indexList[index], file_name.c_str());
             return false;
         }
+        if (!images->get(index))
+        {
+            images->insert(index, std::make_shared<MirImage>());
+        }
+        auto& img = images->get(index).get();
+        if (!initImageHeader(img))
+        {
+            LogError("Image header init failed, mir lib file {}. image index: {}.", file_name.c_str(), index);
+            return false;
+        }
+        img->data = new char[img->header.length];
+		if (!MirLib::Read(
+		        logged_fstream.get(),
+		        file_name,
+		        img->data,
+		        "image data",
+		        img->header.length)) {
+			LogError("Can not read image data, mir lib file {}. image index: {}.", file_name.c_str(), index);
+			return false;
+		}
+        img->initialized = true;
     }
     //image header has been initialized
-    else
-    {
-        logged_fstream->Seekp(indexList[index] + sizeof(MirImageHeader), std::ios::beg);
+    // else
+    // {
+    //     logged_fstream->Seekp(indexList[index] + MIRIMGHEADER_SIZE, std::ios::beg);
 
-    }
+    // }
 
     return true;
 }
 
-bool MirLib::getImageData(int index, void* data)
+bool MirLib::getImageData(int index, char* data)
 {
-    std::lock_guard<std::mutex> lock(mutex);
     if (!initializeImage(index))
     {
         return false;
     }
-    auto *out = static_cast<char *>(data);
     if (!MirLib::Read(
 	        logged_fstream.get(),
 	        file_name,
-	        out,
+	        data,
 	        "image data",
-	        images[index]->header.length))
+	        images->get(index).get()->header.length))
     {
 		return false;
 	}
-
     return true;
 }
 

@@ -47,9 +47,25 @@ inline SDL_Surface *LoadPNG(const char *file)
 	return surface;
 }
 
-inline SDL_Surface *LoadPNGFromMirLib(const char *file, size_t img_idx)
+// inline SDL_Surface *LoadPNGFromMirLib(const char *file, size_t img_idx)
+// {
+// 	SDL_RWops *rwops = OpenMirLibAsSdlRwOps(file, img_idx);
+// 	if (!rwops)
+// 	{
+// 		return NULL;
+// 	}
+// 	SDL_Surface *surface = IMG_LoadPNG_RW(rwops);
+// 	SDL_RWclose(rwops);
+// 	return surface;
+// }
+
+inline SDL_Surface *LoadPNGFromMemMirLib(const char *file, size_t img_idx)
 {
-	SDL_RWops *rwops = OpenMirLibAsSdlRwOps(file, img_idx);
+	SDL_RWops *rwops = OpenMirLibInMemAsSdlRwOps(file, img_idx);
+	if (!rwops)
+	{
+		return NULL;
+	}
 	SDL_Surface *surface = IMG_LoadPNG_RW(rwops);
 	SDL_RWclose(rwops);
 	return surface;

@@ -9,6 +9,7 @@
 #include "utils/log.hpp"
 #include "utils/paths.h"
 #include "utils/str_cat.hpp"
+#include "utils/language.h"
 
 #ifndef UNPACKED_MPQS
 #include "mpq/mpq_sdl_rwops.hpp"
@@ -145,7 +146,9 @@ AssetRef FindAsset(const char *filename)
 	// Load from the `/assets` directory next to the devilutionx binary.
 	result.directHandle = OpenOptionalRWops(paths::AssetsPath() + relativePath);
 	if (result.directHandle != nullptr)
+	{
 		return result;
+	}
 
 #if defined(__ANDROID__) || defined(__APPLE__)
 	// Fall back to the bundled assets on supported systems.
@@ -208,27 +211,51 @@ SDL_RWops *OpenAssetAsSdlRwOps(const char *filename, bool threadsafe)
 }
 
 //*************for mir lib***********start
-std::unordered_map<std::string, MirLibPtr> mir_libs;
+const int MIRLIB_LRUCACHE_SIZE=100;
+MirLibLRUMap mir_libs(MIRLIB_LRUCACHE_SIZE);
 
 MirLibPtr FindMirLib(const char *mir_lib_filename)
 {
-	auto it = mir_libs.find(mir_lib_filename);
-	if (it != mir_libs.end())
+	if (mir_libs.contains(mir_lib_filename))
 	{
-		return std::get<1>(*it);
+		return mir_libs.get(mir_lib_filename).get();
 	}
 	else
 	{
 		auto mir_lib = std::make_shared<MirLib>(mir_lib_filename);
-		mir_libs.insert({mir_lib_filename, mir_lib});
+		if (!mir_lib->Initialize())
+		{
+			app_fatal(StrCat(_("Failed to open mirlib."), "\n", mir_lib_filename));
+			return nullptr;
+		}
+		mir_libs.insert(mir_lib_filename, mir_lib);
 		return mir_lib;
 	}
 }
 
-SDL_RWops *OpenMirLibAsSdlRwOps(const char *mir_lib_filename, size_t img_idx)
+// SDL_RWops *OpenMirLibAsSdlRwOps(const char *mir_lib_filename, size_t img_idx, bool threadsafe)
+// {
+// 	auto mir_lib = FindMirLib(mir_lib_filename);
+// 	if (!mir_lib)
+// 	{
+// 		return NULL;
+// 	}
+// 	return SDL_RWops_FromMirLibFile(mir_lib, img_idx);
+// }
+
+SDL_RWops *OpenMirLibInMemAsSdlRwOps(const char *mir_lib_filename, size_t img_idx, bool threadsafe)
 {
 	auto mir_lib = FindMirLib(mir_lib_filename);
-	return SDL_RWops_FromMirLibFile(mir_lib, img_idx);
+	if (!mir_lib)
+	{
+		return NULL;
+	}
+	auto img = mir_lib->operator[](img_idx);
+	if (!img || !img->initialized)
+	{
+		return NULL;
+	}
+	return SDL_RWFromConstMem(img->data, img->header.length);
 }
 //*************for mir lib***********end
 
