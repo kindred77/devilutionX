@@ -297,7 +297,7 @@ MirLib::initializeImage(int index)
     
     if (!images->contains(index) || !images->get(index).get()->initialized)
     {
-        if (!logged_fstream->Seekp(indexList[index], std::ios::beg))
+        if (!logged_fstream->Seekp(indexList[index]))
         {
             LogError("Can not seek to {}, the mirlib file {} may be invalid.", indexList[index], file_name.c_str());
             return false;

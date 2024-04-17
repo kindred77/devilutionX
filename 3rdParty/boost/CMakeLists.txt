@@ -8,5 +8,5 @@ FetchContent_Declare(boost
 FetchContent_MakeAvailableExcludeFromAll(boost)
 
 add_library(boost INTERFACE)
-target_include_directories(boost INTERFACE ${boost_SOURCE_DIR})
 add_library(boost::boost ALIAS boost)
+target_include_directories(boost SYSTEM BEFORE INTERFACE ${boost_SOURCE_DIR})

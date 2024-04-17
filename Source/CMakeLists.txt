@@ -301,6 +301,8 @@ endforeach()
 
 target_link_libraries(libdevilutionx PUBLIC ${DEVILUTIONX_PLATFORM_LINK_LIBRARIES})
 
+target_link_libraries(libdevilutionx PUBLIC boost)
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
   if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9 AND NOT AMIGA)
     target_link_libraries(libdevilutionx PUBLIC stdc++fs)
