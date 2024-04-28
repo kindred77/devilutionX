@@ -251,14 +251,21 @@ void RenderPresent()
 		auto testSurf = LoadPNGFromMemMirLib("assets/ui_art/Prguse2_png.Lib", 542);
 		//std::cout << "------0000" << std::endl;
 		//std::cout << "------" << testSurf->w << "------------" << testSurf->h << std::endl;
-		SDL_Rect dst = {0, 0, testSurf->w, testSurf->h};
+		SDL_Rect dst = {250, 300, testSurf->w, testSurf->h};
+		SDL_Rect dst2 = {30, 30, testSurf->w, testSurf->h};
 		if (renderer != nullptr)
 		{
 			auto testTexture = SDL_CreateTextureFromSurface(renderer, testSurf);
-			SDL_SetTextureColorMod(testTexture, 255, 0, 255);
-			SDL_SetTextureBlendMode(testTexture, SDL_BLENDMODE_BLEND);
+			SDL_SetTextureColorMod(testTexture, 255, 0, 0);
+			SDL_SetTextureBlendMode(testTexture, SDL_BLENDMODE_NONE);
 			SDL_SetTextureAlphaMod(testTexture, 255);
 			SDL_RenderCopy(renderer, testTexture, NULL, &dst);
+
+			auto testTexture2 = SDL_CreateTextureFromSurface(renderer, testSurf);
+			SDL_SetTextureColorMod(testTexture2, 0, 255, 0);
+			SDL_SetTextureBlendMode(testTexture2, SDL_BLENDMODE_BLEND);
+			SDL_SetTextureAlphaMod(testTexture2, 255);
+			SDL_RenderCopy(renderer, testTexture2, NULL, &dst2);
 		}
 		else
 		{

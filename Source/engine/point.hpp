@@ -48,6 +48,14 @@ struct PointOf {
 	}
 
 	template <typename PointCoordT>
+	constexpr PointOf<CoordT> operator+=(const PointOf<PointCoordT> &other)
+	{
+		x += other.x;
+		y += other.y;
+		return *this;
+	}
+
+	template <typename PointCoordT>
 	constexpr bool operator!=(const PointOf<PointCoordT> &other) const
 	{
 		return !(*this == other);
@@ -187,6 +195,13 @@ template <typename PointCoordT>
 constexpr PointOf<PointCoordT> operator+(PointOf<PointCoordT> a, Direction direction)
 {
 	a += direction;
+	return a;
+}
+
+template <typename PointCoordT>
+constexpr PointOf<PointCoordT> operator+(PointOf<PointCoordT> a, PointOf<PointCoordT> b)
+{
+	a += b;
 	return a;
 }
 
