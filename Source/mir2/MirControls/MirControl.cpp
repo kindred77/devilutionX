@@ -654,15 +654,6 @@ void MirControl::Dispose(bool disposing)
 	IsDisposed = true;*/
 }
 
-MirControl::MirControl()
-{
-	opacity_ = 1F;
-	_enabled = true;
-	_foreColour = Color.White;
-	_visible = true;
-	_sound = SoundList.None;
-}
-
 MirControlPtr MirControl::GetParent() const
 {
 	return parent_;

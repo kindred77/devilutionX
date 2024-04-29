@@ -162,319 +162,85 @@ public:
 
 	long CleanTime = 0l;
 
-	MirControl()
-	{
-		opacity_ = 1F;
-		_enabled = true;
-		_foreColour = Color.White;
-		_visible = true;
-		_sound = SoundList.None;
-	}
+	MirControlPtr GetParent() const;
 
-	MirControlPtr GetParent() const
-	{
-		return parent_;
-	};
+	virtual void SetSize(SizePtr size);
 
-	virtual void SetSize(SizePtr size)
-	{
-		if (size_ == size)
-			return;
-		size_ = size;
-		OnSizeChanged();
-	}
+	virtual SizePtr GetSize() const;
 
-	virtual SizePtr GetSize() const
-	{
-		return size_;
-	}
+	virtual SizePtr GetTrueSize() const;
 
-	virtual SizePtr GetTrueSize() const
-	{
-		return size_;
-	}
+	RectanglePtr GetDisplayRectangle() const;
 
-	RectanglePtr GetDisplayRectangle() const
-	{
-		return std::make_shared<Rectangle>(GetDisplayLocation(), GetSize());
-	}
+	void SetParent(MirControlPtr parent);
 
-	void SetParent(MirControlPtr parent)
-	{
-		if (parent_ == parent)
-			return;
-		if (parent_ != nullptr)
-			parent_->RemoveControl(shared_from_this());
-		parent_ = parent;
-		if (parent_ != nullptr)
-			parent_->AddControl(shared_from_this());
-		OnParentChanged();
-	}
+	void SetBackColor(ColorPtr backColor);
 
-	void SetBackColor(ColorPtr backColor)
-	{
-		if (backColor_ == backColor)
-		{
-			return;
-		}
-		backColor_ = backColor;
-		OnBackColourChanged();
-	}
+	ColorPtr GetBackColor() const;
 
-	ColorPtr GetBackColor() const
-	{
-		return backColour_;
-	}
+	void SetLocation(PointPtr location);;
 
-	void SetLocation(PointPtr location)
-	{
-		if (location_ == location)
-			return;
-		location_ = location;
-		OnLocationChanged(); 
-	}
+	virtual PointPtr GetDisplayLocation();
 
-	PointPtr GetLocation()
-	{
-		return location_;
-	}
+	virtual void SetIsBorder(bool isBorder);
 
-	virtual PointPtr GetDisplayLocation()
-	{
-		if (!parent_)
-		{
-			return location_;
-		}
-		else
-		{
-			auto point = parent_->GetDisplayLocation();
-			return point->Add(location_);
-		}
-	}
+	virtual bool GetIsBorder() const;
 
-	virtual void SetIsBorder(bool isBorder)
-	{
-		if (isBorder_ == isBorder)
-			return;
-		isBorder_ = isBorder;
-		OnBorderChanged();
-	}
+	virtual void SetBorderColor(ColorPtr borderColor);
 
-	virtual bool GetIsBorder() const
-	{
-		return isBorder_;
-	}
+	virtual ColorPtr GetBorderColor() const;
 
-	virtual void SetBorderColor(ColorPtr borderColor)
-	{
-		if (borderColor_ == borderColor)
-			return;
-		borderColor_ = borderColor;
-		OnBorderColourChanged();
-	}
+	void SetForeColour(ColorPtr foreColor);
 
-	virtual ColorPtr GetBorderColor() const
-	{
-		return borderColor_;
-	}
+	ColorPtr GetForeColour() const;
 
-	void SetForeColour(ColorPtr foreColor)
-	{
-		if (foreColor_ == foreColor)
-			return;
-		foreColor_ = foreColor;
-		OnForeColourChanged();
-	}
+	void SetIsDrawControlTexture(bool isDrawControlTexture);
 
-	ColorPtr GetForeColour() const
-	{
-		return foreColor_;
-	}
+	bool GetIsDrawControlTexture() const;
 
-	void SetIsDrawControlTexture(bool isDrawControlTexture)
-	{
-		if (isDrawControlTexture_ == isDrawControlTexture)
-			return;
-		isDrawControlTexture_ = isDrawControlTexture;
-		Redraw();
-	}
+	virtual void Redraw();
 
-	bool GetIsDrawControlTexture() const
-	{
-		return isDrawControlTexture_;
-	}
+	std::vector<MirControlPtr> GetControls() const;
 
-	virtual void Redraw()
-	{
-		if (parent_)
-			parent_->Redraw();
-	}
+	void InsertControl(int index, MirControlPtr control);
 
-	std::vector<MirControlPtr> GetControls() const
-	{
-		return controls_;
-	}
+	void SetIsEnabled(bool isEnabled);
 
-	void InsertControl(int index, MirControlPtr control)
-	{
-		//if (control->GetParent() != this) {
-		//	control.Parent = null;
-		//	control._parent = this;
-		//}
+	bool GetIsEnabled();
 
-		control->SetParent(shared_from_this());
+	void SetHint(std::string hint);
 
-		if (index >= controls_.size())
-			controls_.push_back(control);
-		else {
-			controls_.insert(index, control);
-			OnControlAdded();
-		}
-	}
+	std::string GetHint() const;
 
-	void SetIsEnabled(bool isEnabled)
-	{
-		if (isEnabled_ == isEnabled)
-			return;
-		isEnabled_ = isEnabled;
-		OnEnabledChanged();
-	}
+	void SetIsModal(bool isModal);
 
-	bool GetIsEnabled()
-	{
-		return parent_ == nullptr ? isEnabled_ : parent_->GetIsEnabled() && isEnabled_;
-	}
+	bool GetIsModal();
 
-	void SetHint(std::string hint)
-	{
-		if (hint_ == hint)
-			return;
+	void SetIsMovable(bool isMovable);
 
-		hint_ = hint;
-		OnHintChanged();
-	}
+	bool GetIsMovable();
 
-	std::string GetHint() const
-	{
-		return hint_;
-	}
+	void SetIsNotControl(bool isNotControl);
 
-	void SetIsModal(bool isModal)
-	{
-		if (isModal_ == isModal)
-			return;
-		isModal_ = isModal;
-		OnIsModalChanged();
-	}
+	bool GetIsNotControl();
 
-	bool GetIsModal()
-	{
-		return isModal_;
-	}
+	void SetOpacity(float opacity);
 
-	void SetIsMovable(bool isMovable)
-	{
-		if (isMovable_ == isMovable)
-			return;
-		isMovable_ = isMovable;
-		OnIsMovableChanged();
-	}
+	float GetOpacity();
 
-	bool GetIsMovable()
-	{
-		return isMovable_;
-	}
+	void SetSound(int sound);
 
-	void SetIsNotControl(bool isNotControl)
-	{
-		if (isNotControl_ == isNotControl)
-			return;
-		isNotControl_ = isNotControl;
-		OnIsNotControlChanged();
-	}
+	int GetSound();
 
-	bool GetIsNotControl()
-	{
-		return isNotControl_;
-	}
+	void SetIsSort(bool isSort);
 
-	void SetOpacity(float opacity)
-	{
-		if (opacity > 1F)
-			opacity = 1F;
-		if (opacity < 0F)
-			opacity = 0;
+	bool GetIsSort();
 
-		if (opacity_ == opacity)
-			return;
+	void TrySort();
 
-		opacity_ = opacity;
-		OnOpacityChanged();
-	}
+	void SetIsVisible(bool isVisible);
 
-	float GetOpacity()
-	{
-		return opacity_;
-	}
-
-	void SetSound(int sound)
-	{
-		if (sound_ == sound)
-			return;
-		sound_ = sound;
-		OnSoundChanged();
-	}
-
-	int GetSound()
-	{
-		return sound_
-	}
-
-	void SetIsSort(bool isSort)
-	{
-		if (isSort_ == isSort)
-			return;
-		isSort_ = isSort;
-		OnIsSortChanged();
-	}
-
-	bool GetIsSort()
-	{
-		return isSort_;
-	}
-
-	void TrySort()
-	{
-		if (parent_ == null)
-			return;
-
-		parent_->TrySort();
-
-		auto & parent_controls = parent_->GetControls();
-		if (parent_controls.back().get() == this)
-			return;
-
-		if (!isSort_)
-			return;
-
-		parent_->RemoveControl(shared_from_this());
-		parent_->AddControl(shared_from_this());
-
-		Redraw();
-	}
-
-	void SetIsVisible(bool isVisible)
-	{
-		if (isVisible_ == isVisible)
-			return;
-		isVisible_ = isVisible;
-		OnIsVisibleChanged();
-	}
-
-	bool GetIsVisible()
-	{
-		return parent_ == nullptr ? isVisible_ : parent_->GetIsVisible() && isVisible_;
-	}
+	bool GetIsVisible();
 
 	virtual bool IsMouseOver(PointPtr p);
 
