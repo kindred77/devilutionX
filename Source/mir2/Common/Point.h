@@ -28,9 +28,14 @@ public:
 		return x_ == other->x_ && y_ == other->y_;
 	}
 
-	PointPtr Add(const PointPtr other)
+	PointPtr Add(const PointPtr other) const
 	{
 		return std::make_shared<Point>(x_ + other->x_, y_ + other->y_);
+	}
+
+	PointPtr Add(int x, int y) const
+	{
+		return std::make_shared<Point>(x_ + x, y_ + y);
 	}
 };
 
