@@ -12,11 +12,11 @@ using MirImageControlPtr = std::shared_ptr<MirImageControl>;
 class MirImageControl : public MirControl, public std::enable_shared_from_this<MirImageControl>
 {
 private:
-	bool isUseOffSet_;
-	bool isDrawImage_;
-	bool isPixelDetect_;
-	int index_;
-	MirLibPtr mirLib_;
+	bool isUseOffSet_ = false;
+	bool isDrawImage_ = true;
+	bool isPixelDetect_ = false;
+	int index_ = -1;
+	MirLibPtr mirLib_ = nullptr;
 
 protected:
 	bool GetIsUseOffset();
@@ -25,6 +25,10 @@ protected:
 	void OnLibraryChanged();
 	void OnDrawImageChanged();
 	void OnPixelDetectChanged();
+
+	void DrawControl() override;
+
+	void Dispose(bool disposing) override;
 
 public:
 	PointPtr GetDisplayLocation() override;
@@ -44,6 +48,10 @@ public:
 	MirLibPtr GetMirLib();
 
 	SizePtr GetSize() const override;
+
+	SizePtr GetTrueSize() const override;
+
+	bool IsMouseOver(const Pointptr p) override;
 
 };
 

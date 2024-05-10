@@ -959,7 +959,7 @@ bool MirControl::GetIsVisible()
 	return parent_ == nullptr ? isVisible_ : parent_->GetIsVisible() && isVisible_;
 }
 
-bool MirControl::IsMouseOver(PointPtr p)
+bool MirControl::IsMouseOver(const PointPtr p)
 {
 	return GetIsVisible() && (GetDisplayRectangle()->Contains(p) || isMoving_ || GetIsModal()) && !GetIsNotControl();
 }

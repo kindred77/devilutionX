@@ -5,6 +5,8 @@
 #include "utils/logged_fstream.hpp"
 #include "utils/log.hpp"
 #include "utils/stdcompat/cstddef.hpp"
+#include "mir2/Common/Size.h"
+#include "mir2/Common/Point.h"
 
 #include <boost/compute/detail/lru_cache.hpp>
 
@@ -30,6 +32,34 @@ struct MirImage
         initialized = false;
         delete [] data;
         data = NULL;
+    }
+
+    bool VisiblePixel(const PointPtr p) const
+    {
+        if (p->X() < 0 || p->Y() < 0 || p->X() >= header.width || p->Y() >= header.height)
+            return false;
+
+        int w = header.width;
+
+        bool result = false;
+        if (data)
+        {
+            int x = p->X();
+            int y = p->Y();
+                
+            int index = (y * (w << 2)) + (x << 2);
+                
+            char col = data[index];
+
+            if (col == 0) return false;
+            else return true;
+        }
+        return result;
+    }
+
+    SizePtr GetTrueSize()
+    {
+        return nullptr;
     }
 };
 
@@ -66,6 +96,10 @@ public:
     }
 
     bool Initialize();
+
+    bool CheckImage(int index);
+
+    bool VisiblePixel(int index, PointPtr point, bool accuate);
 
     inline const char* GetFilName() const
     {

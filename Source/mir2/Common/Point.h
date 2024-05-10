@@ -37,6 +37,26 @@ public:
 	{
 		return std::make_shared<Point>(x_ + x, y_ + y);
 	}
+
+	PointPtr Subtract(const PointPtr other) const
+	{
+		return std::make_shared<Point>(x_ - other->x_, y_ - other->y_);
+	}
+
+	PointPtr Subtract(int x, int y) const
+	{
+		return std::make_shared<Point>(x_ - x, y_ - y);
+	}
+
+	int X() const
+	{
+		return x_;
+	}
+
+	int Y() const
+	{
+		return y_;
+	}
 };
 
 PointPtr Point::Empty = std::make_shared<Point>();

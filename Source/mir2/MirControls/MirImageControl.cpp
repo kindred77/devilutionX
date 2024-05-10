@@ -14,7 +14,7 @@ PointPtr MirImageControl::GetDisplayLocation()
     {
         const auto mirlib = GetMirLib();
         const auto mirImg = mirlib->operator[](GetIndex());
-        return display_location->Add(mirImg->x, mirImg->y);
+        return display_location->Add(mirImg->header.x, mirImg->header.y);
     }
     else
     {
@@ -115,8 +115,62 @@ MirLibPtr MirImageControl::GetMirLib()
 
 SizePtr MirImageControl::GetSize() const
 {
-    if (Library != null && Index >= 0) return Library.GetTrueSize(Index);
+    if (mirLib_ && GetIndex() >= 0) return Library.GetTrueSize(Index);
     return base.Size;
+}
+
+SizePtr MirImageControl::GetTrueSize() const
+{
+    if (mirLib_ && GetIndex() >= 0) return Library.GetTrueSize(Index);
+    return base.TrueSize;
+}
+
+void MirImageControl::DrawControl()
+{
+    MirControl::DrawControl();
+
+    if (GetIsDrawImage() && mirLib_)
+    {
+        //if (GrayScale) DXManager.SetGrayscale(1F, Color.White);
+        //else if (Blending) Library.DrawBlend(Index, DisplayLocation, ForeColour, false, BlendingRate);
+        //else Library.Draw(Index, DisplayLocation, ForeColour, false, Opacity);
+        //if (GrayScale) DXManager.SetNormal(1F, Color.White);
+    }
+}
+
+bool MirImageControl::IsMouseOver(const Pointptr p)
+{
+    if (MirControl::IsMouseOver(p))
+    {
+        const auto mirlib = GetMirLib();
+        if (!isPixelDetect_ || mirlib->VisiblePixel(Index, p->Subtract(GetDisplayLocation()),true) || isMoving_)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void MirImageControl::Dispose(bool disposing)
+{
+    MirControl::Dispose(disposing);
+            
+    if (!disposing) return;
+
+    //DrawImageChanged = null;
+    isDrawImage_ = false;
+
+    //IndexChanged = null;
+    index_ = -1;
+
+    //LibraryChanged = null;
+    mirLib_ = nullptr;
+
+    //PixelDetectChanged = null;
+    isPixelDetect_ = false;
+
+    //UseOffSetChanged = null;
+    isUseOffSet_ = false;
 }
 
 }

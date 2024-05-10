@@ -242,7 +242,7 @@ public:
 
 	bool GetIsVisible();
 
-	virtual bool IsMouseOver(PointPtr p);
+	virtual bool IsMouseOver(const PointPtr p);
 
 	virtual void MultiLine();
 

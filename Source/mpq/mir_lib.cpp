@@ -352,4 +352,43 @@ bool MirLib::getImageData(int index, char* data)
     return true;
 }
 
+bool MirLib::CheckImage(int index)
+{
+    if (!initialized)
+    {
+        return false;
+    }
+
+    if (!images || index < 0 || index >= imageCnt)
+        return false;
+
+    auto img = this->operator[](index);
+    if (!img || img->header.width == 0 || img->header.height == 0)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool MirLib::VisiblePixel(int index, PointPtr point, bool accuate)
+{
+    if (!CheckImage(index)) return false;
+
+    auto img = this->operator[](index);
+    if (accuate)
+    { 
+        return img->VisiblePixel(point);
+    }
+
+    int accuracy = 2;
+
+    for (int x = -accuracy; x <= accuracy; x++)
+        for (int y = -accuracy; y <= accuracy; y++)
+            if (img->VisiblePixel(std::make_shared<Point>(point->X() + x, point->Y() + y)))
+                return true;
+
+    return false;
+}
+
 }
