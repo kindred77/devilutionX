@@ -761,7 +761,7 @@ ColorPtr MirControl::GetBorderColor() const
 	return borderColor_;
 }
 
-void MirControl::SetForeColour(ColorPtr foreColor)
+void MirControl::SetForeColor(ColorPtr foreColor)
 {
 	if (foreColor_ == foreColor)
 		return;
@@ -769,7 +769,7 @@ void MirControl::SetForeColour(ColorPtr foreColor)
 	OnForeColourChanged();
 }
 
-ColorPtr MirControl::GetForeColour() const
+ColorPtr MirControl::GetForeColor() const
 {
 	return foreColor_;
 }

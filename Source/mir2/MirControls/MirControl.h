@@ -24,7 +24,7 @@ private:
 	PointPtr movePoint_ = nullptr;
 	ColorPtr backColor_ = nullptr;
 	ColorPtr borderColor_ = nullptr;
-	ColorPtr foreColor = Clolor::WHITE;
+	ColorPtr foreColor_ = Clolor::WHITE;
 	RectanglePtr displayRectangle_ = nullptr;
 	SizePtr size_ = nullptr;
 	bool isDrawControlTexture_ = false;
@@ -190,9 +190,9 @@ public:
 
 	virtual ColorPtr GetBorderColor() const;
 
-	void SetForeColour(ColorPtr foreColor);
+	virtual void SetForeColor(ColorPtr foreColor);
 
-	ColorPtr GetForeColour() const;
+	virtual ColorPtr GetForeColor() const;
 
 	void SetIsDrawControlTexture(bool isDrawControlTexture);
 
