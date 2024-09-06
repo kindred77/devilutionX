@@ -11,6 +11,12 @@ private:
 	int height;
 
 public:
+	static SizePtr EMPTY;
+	Size(int width_, int height_)
+	{
+		width = width_;
+		height = height_;
+	}
 	bool operator==(const SizePtr other) const
 	{
 		return width == other->width && height == other->height;
@@ -28,5 +34,7 @@ public:
 		return shared_from_this();
 	}
 };
+
+SizePtr Size::EMPTY = std::make_shared<Size>(0, 0);
 
 } // namespace devilution
