@@ -5,8 +5,8 @@
 #include "utils/logged_fstream.hpp"
 #include "utils/log.hpp"
 #include "utils/stdcompat/cstddef.hpp"
-#include "mir2/Common/Size.h"
-#include "mir2/Common/Point.h"
+//#include "mir2/Common/Size.h"
+//#include "mir2/Common/Point.h"
 
 #include <boost/compute/detail/lru_cache.hpp>
 
@@ -34,33 +34,33 @@ struct MirImage
         data = NULL;
     }
 
-    bool VisiblePixel(const PointPtr p) const
-    {
-        if (p->X() < 0 || p->Y() < 0 || p->X() >= header.width || p->Y() >= header.height)
-            return false;
+    // bool VisiblePixel(const PointPtr p) const
+    // {
+    //     if (p->X() < 0 || p->Y() < 0 || p->X() >= header.width || p->Y() >= header.height)
+    //         return false;
 
-        int w = header.width;
+    //     int w = header.width;
 
-        bool result = false;
-        if (data)
-        {
-            int x = p->X();
-            int y = p->Y();
+    //     bool result = false;
+    //     if (data)
+    //     {
+    //         int x = p->X();
+    //         int y = p->Y();
                 
-            int index = (y * (w << 2)) + (x << 2);
+    //         int index = (y * (w << 2)) + (x << 2);
                 
-            char col = data[index];
+    //         char col = data[index];
 
-            if (col == 0) return false;
-            else return true;
-        }
-        return result;
-    }
+    //         if (col == 0) return false;
+    //         else return true;
+    //     }
+    //     return result;
+    // }
 
-    SizePtr GetTrueSize()
-    {
-        return nullptr;
-    }
+    // SizePtr GetTrueSize()
+    // {
+    //     return nullptr;
+    // }
 };
 
 using MirImagePtr = std::shared_ptr<MirImage>;
@@ -99,7 +99,7 @@ public:
 
     bool CheckImage(int index);
 
-    bool VisiblePixel(int index, PointPtr point, bool accuate);
+    // bool VisiblePixel(int index, PointPtr point, bool accuate);
 
     inline const char* GetFilName() const
     {

@@ -1,8 +1,10 @@
+#include <SDL_main.h>
 #include <boost/compute/detail/lru_cache.hpp>
 #include <iostream>
 #include <memory>
 
 class MirLib
+
 {
     int i = 0;
     bool initialized = false;
@@ -22,7 +24,7 @@ public:
 
 using MirLibPtr = std::shared_ptr<MirLib>;
 
-int main()
+int SDL_main(int argv, char** args)
 {
     const int SIZE = 5;
     boost::compute::detail::lru_cache<std::string, MirLibPtr> mir_libs(SIZE);

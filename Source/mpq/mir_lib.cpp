@@ -371,24 +371,24 @@ bool MirLib::CheckImage(int index)
     return true;
 }
 
-bool MirLib::VisiblePixel(int index, PointPtr point, bool accuate)
-{
-    if (!CheckImage(index)) return false;
+// bool MirLib::VisiblePixel(int index, PointPtr point, bool accuate)
+// {
+//     if (!CheckImage(index)) return false;
 
-    auto img = this->operator[](index);
-    if (accuate)
-    { 
-        return img->VisiblePixel(point);
-    }
+//     auto img = this->operator[](index);
+//     if (accuate)
+//     { 
+//         return img->VisiblePixel(point);
+//     }
 
-    int accuracy = 2;
+//     int accuracy = 2;
 
-    for (int x = -accuracy; x <= accuracy; x++)
-        for (int y = -accuracy; y <= accuracy; y++)
-            if (img->VisiblePixel(std::make_shared<Point>(point->X() + x, point->Y() + y)))
-                return true;
+//     for (int x = -accuracy; x <= accuracy; x++)
+//         for (int y = -accuracy; y <= accuracy; y++)
+//             if (img->VisiblePixel(std::make_shared<Point>(point->X() + x, point->Y() + y)))
+//                 return true;
 
-    return false;
-}
+//     return false;
+// }
 
 }

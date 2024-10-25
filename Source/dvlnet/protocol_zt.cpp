@@ -12,6 +12,7 @@
 
 #include <lwip/igmp.h>
 #include <lwip/mld6.h>
+#define LWIP_TIMEVAL_PRIVATE 0
 #include <lwip/sockets.h>
 #include <lwip/tcpip.h>
 
