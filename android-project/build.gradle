@@ -2,8 +2,16 @@
 
 buildscript {
 	repositories {
-		mavenCentral()
-		google()
+		//mavenCentral()
+		//google()
+		jcenter()
+		maven { url 'https://maven.aliyun.com/repository/google' }
+		maven { url 'https://maven.aliyun.com/repository/jcenter' }
+		// 如果你需要其他类型的库，可以添加更多阿里云的仓库地址
+		// 例如，对于Maven Central的镜像：
+		maven { url 'https://maven.aliyun.com/repository/public' }
+		// 对于Gradle插件的镜像：
+		maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
 	}
 	dependencies {
 		classpath 'com.android.tools.build:gradle:7.4.2'
