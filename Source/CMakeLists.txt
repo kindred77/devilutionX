@@ -289,7 +289,7 @@ endif()
 
 if(NOT NONET AND NOT DISABLE_ZERO_TIER)
   if(NOT ANDROID)
-    target_link_libraries(libdevilutionx PUBLIC zt-static)
+    target_link_libraries(libdevilutionx PUBLIC zt)
   else()
     target_link_libraries(libdevilutionx PUBLIC zt-shared)
   endif()

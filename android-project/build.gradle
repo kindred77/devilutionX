@@ -2,9 +2,8 @@
 
 buildscript {
 	repositories {
-		//mavenCentral()
-		//google()
-		jcenter()
+		mavenCentral()
+		google()
 		maven { url 'https://maven.aliyun.com/repository/google' }
 		maven { url 'https://maven.aliyun.com/repository/jcenter' }
 		// 如果你需要其他类型的库，可以添加更多阿里云的仓库地址
@@ -25,6 +24,13 @@ allprojects {
 	repositories {
 		mavenCentral()
 		google()
+		maven { url 'https://maven.aliyun.com/repository/google' }
+		maven { url 'https://maven.aliyun.com/repository/jcenter' }
+		// 如果你需要其他类型的库，可以添加更多阿里云的仓库地址
+		// 例如，对于Maven Central的镜像：
+		maven { url 'https://maven.aliyun.com/repository/public' }
+		// 对于Gradle插件的镜像：
+		maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
 	}
 }
 
