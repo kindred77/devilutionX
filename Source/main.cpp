@@ -49,7 +49,8 @@ extern "C" int main(int argc, char **argv)
 #ifdef GPERF_HEAP_MAIN
 	HeapProfilerStart("main");
 #endif
-	const int result = devilution::DiabloMain(argc, argv);
+	//const int result = devilution::DiabloMain(argc, argv);
+    const int result = mir::MirMain(argc, argv);
 #ifdef GPERF_HEAP_MAIN
 	HeapProfilerStop();
 #endif
