@@ -1,12 +1,12 @@
-include(functions/FetchContent_MakeAvailableExcludeFromAll)
+include(functions/FetchContent_ExcludeFromAll_backport)
 
 set(BUILD_HOST_SELFTEST OFF)
 
 include(FetchContent)
-FetchContent_Declare(libzt
+FetchContent_Declare_ExcludeFromAll(libzt
   GIT_REPOSITORY https://github.com/diasurgical/libzt.git
-  GIT_TAG d6c6a069a5041a3e89594c447ced3f15d77618b8)
-FetchContent_MakeAvailableExcludeFromAll(libzt)
+  GIT_TAG 72a518bcf7d87e32f718ca612ce2c8303ceedd12)
+FetchContent_MakeAvailable_ExcludeFromAll(libzt)
 
 if(NOT ANDROID)
   set(libzt_LIB_NAME zt-static)
@@ -22,6 +22,7 @@ foreach(
   lwip_obj
   miniupnpc_obj
   zto_pic
+  zt_pic
   natpmp_pic
   lwip_pic
   miniupnpc_pic

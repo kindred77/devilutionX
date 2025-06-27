@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.22)
 
-foreach(_policy CMP0111 CMP0126 CMP0135)
+foreach(_policy CMP0135 CMP0141)
   if(POLICY ${_policy})
     cmake_policy(SET ${_policy} NEW)
     set(CMAKE_POLICY_DEFAULT_${_policy} NEW)
@@ -47,28 +47,35 @@ include(VcPkgManifestFeatures)
 # 1. Properties such as `TARGET_SUPPORTS_SHARED_LIBS` are defined.
 # 2. Toolchain file is evaluated, required for `Platforms.cmake`,
 #    which can override the options.
-if(NOT VERSION_NUM)
-  include(functions/git)
-  get_git_tag(VERSION_NUM)
-  if(NOT "${VERSION_NUM}" STREQUAL "")
-    string(REGEX MATCH "([0-9]+\\.[0-9]+\\.[0-9]+)" VERSION_NUM ${VERSION_NUM} )
-  endif()
-  if(NOT VERSION_SUFFIX)
-    get_git_commit_hash(GIT_COMMIT_HASH)
-    set(VERSION_SUFFIX "${GIT_COMMIT_HASH}")
-  endif()
+file(STRINGS "VERSION" VERSION_STR)
+if(NOT "${VERSION_STR}" STREQUAL "")
+  string(REGEX MATCH "([0-9]+\\.[0-9]+\\.[0-9]+).*" VERSION_PREFIX ${VERSION_STR})
+  set(VERSION_NUM ${CMAKE_MATCH_1})
 endif()
+
 if(NOT VERSION_SUFFIX)
-  set(VERSION_SUFFIX "debug")
+  # For versions with a suffix, e.g. "1.5.0-dev", include
+  # the build type and the git hash.
+  set(VERSION_SUFFIX "-$<CONFIG>")
+  if(VERSION_PREFIX MATCHES "-")
+    if(NOT GIT_COMMIT_HASH)
+      include(functions/git)
+      get_git_commit_hash(GIT_COMMIT_HASH)
+    endif()
+    if(GIT_COMMIT_HASH)
+      set(VERSION_SUFFIX "${VERSION_SUFFIX}-${GIT_COMMIT_HASH}")
+    endif()
+  else()
+    # For versions without a suffix, e.g. "1.5.0" rather than "1.5.0-dev",
+    # only include the build type if it is a debug build.
+    set(VERSION_SUFFIX "$<$<CONFIG:Debug>:$<CONFIG>>")
+  endif()
 endif()
-if(VERSION_NUM MATCHES untagged)
-  project(DevilutionX LANGUAGES C CXX)
-else()
-  project(DevilutionX
-    VERSION ${VERSION_NUM}
-    LANGUAGES C CXX)
-endif()
-set(PROJECT_VERSION_WITH_SUFFIX "${PROJECT_VERSION}$<$<CONFIG:Debug>:-${VERSION_SUFFIX}>")
+
+project(DevilutionX
+  VERSION ${VERSION_NUM}
+  LANGUAGES C CXX)
+set(PROJECT_VERSION_WITH_SUFFIX "${VERSION_PREFIX}${VERSION_SUFFIX}")
 
 # Platform definitions can override options and we want `cmake_dependent_option` to see the effects.
 # Note that a few options are still defined before this because they're needed by `VcPkgManifestFeatures.cmake`.
@@ -92,10 +99,26 @@ option(ENABLE_CODECOVERAGE "Instrument code for code coverage (only enabled with
 # Packaging options
 RELEASE_OPTION(CPACK "Configure CPack")
 option(MACOSX_STANDALONE_APP_BUNDLE "Generate a portable app bundle to use on other devices (requires sudo)" OFF)
+option(WIN_NSIS "Generate an NSIS installer" OFF)
 
 # Network options
 cmake_dependent_option(DISABLE_TCP "Disable TCP multiplayer option" OFF "NOT NONET" ON)
 cmake_dependent_option(DISABLE_ZERO_TIER "Disable ZeroTier multiplayer option" OFF "NOT NONET" ON)
+
+# Graphics options
+if(NOT USE_SDL1)
+  set(DEVILUTIONX_DISPLAY_TEXTURE_FORMAT "SDL_PIXELFORMAT_RGB888" CACHE STRING "Texture format for DevilutionX textures when using the GPU renderer")
+  mark_as_advanced(DEVILUTIONX_DISPLAY_TEXTURE_FORMAT)
+endif()
+
+if(USE_SDL1)
+  # SDL_image in SDL1 does not support PNG, making PCX the only option.
+  set(DEVILUTIONX_SCREENSHOT_FORMAT "DEVILUTIONX_SCREENSHOT_FORMAT_PCX")
+else()
+  set(DEVILUTIONX_SCREENSHOT_FORMAT "DEVILUTIONX_SCREENSHOT_FORMAT_PNG" CACHE STRING "Screenshot format")
+  set_property(CACHE DEVILUTIONX_SCREENSHOT_FORMAT PROPERTY STRINGS "DEVILUTIONX_SCREENSHOT_FORMAT_PNG;DEVILUTIONX_SCREENSHOT_FORMAT_PCX")
+  mark_as_advanced(DEVILUTIONX_SCREENSHOT_FORMAT)
+endif()
 
 # Sound options
 option(NOSOUND "Disable sound support" OFF)
@@ -115,7 +138,7 @@ set_property(CACHE DEVILUTIONX_DEFAULT_RESAMPLER PROPERTY STRINGS ${_resamplers}
 option(DISABLE_LTO "Disable link-time optimization (by default enabled in release mode)" OFF)
 option(PIE "Generate position-independent code" OFF)
 cmake_dependent_option(DEVILUTIONX_DISABLE_RTTI "Disable RTTI" ON "NONET" OFF)
-cmake_dependent_option(DEVILUTIONX_DISABLE_EXCEPTIONS "Disable exceptions" ON "NONET" OFF)
+cmake_dependent_option(DEVILUTIONX_DISABLE_EXCEPTIONS "Disable exceptions" ON "DISABLE_ZERO_TIER" OFF)
 RELEASE_OPTION(DEVILUTIONX_STATIC_CXX_STDLIB "Link C++ standard library statically (if available)")
 option(DEVILUTIONX_PROFILE_GENERATE "Build a binary that generates the profile for PGO" OFF)
 option(DEVILUTIONX_PROFILE_USE "Build with PGO using the given profile file" OFF)
@@ -138,6 +161,8 @@ mark_as_advanced(DEVILUTIONX_PALETTE_TRANSPARENCY_BLACK_16_LUT)
 # Additional features
 option(DISABLE_DEMOMODE "Disable demo mode support" OFF)
 option(DISCORD_INTEGRATION "Build with Discord SDK for rich presence support" OFF)
+option(SCREEN_READER_INTEGRATION "Build with screen reader support" OFF)
+mark_as_advanced(SCREEN_READER_INTEGRATION)
 
 # If both UNPACKED_MPQS and UNPACKED_SAVES are enabled, we completely remove MPQ support.
 if(UNPACKED_MPQS AND UNPACKED_SAVES)
@@ -147,7 +172,7 @@ else()
 endif()
 
 # By default, devilutionx.mpq is built only if smpq is installed and MPQ support is enabled.
-if(SUPPORTS_MPQ)
+if(SUPPORTS_MPQ AND NOT UNPACKED_MPQS)
   if(NOT DEFINED BUILD_ASSETS_MPQ AND NOT SRC_DIST)
     find_program(SMPQ smpq)
   elseif(BUILD_ASSETS_MPQ)
@@ -254,6 +279,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_link_options("$<$<BOOL:${DEVILUTIONX_PROFILE_DIR}>:-fprofile-dir=${DEVILUTIONX_PROFILE_DIR};-fprofile-prefix-path=${CMAKE_CURRENT_BINARY_DIR}>")
 endif()
 
+if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  # u8path() function is deprecated but there is no sensible alternative and it might even get un-deprecated.
+  add_definitions(-D_SILENCE_CXX20_U8PATH_DEPRECATION_WARNING)
+  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.25")
+    # This enables Edit & Continue support, see https://learn.microsoft.com/en-us/cpp/build/cmake-projects-in-visual-studio#edit-and-continue-for-cmake-projects
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug>:EditAndContinue>") # Sets /ZI compiler option, see https://cmake.org/cmake/help/latest/variable/CMAKE_MSVC_DEBUG_INFORMATION_FORMAT.html
+    add_link_options("$<$<CONFIG:Debug>:/INCREMENTAL>")
+  endif()
+endif()
+
 # Not a genexp because CMake doesn't support it
 # https://gitlab.kitware.com/cmake/cmake/-/issues/20546
 if(NOT DISABLE_LTO)
@@ -284,12 +319,9 @@ if(GPERF)
   endif()
 endif()
 
-# Despite setting C++ standard to 20, features from this version are not being used.
-# The oldest compiler used is GCC 6.5 - and that defines our C++ feature set (meaning most of C++17).
-# It's present only to take advantage of fmt::format build time errors.
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_STANDARD_REQUIRED OFF)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # for clang-tidy
 set(CMAKE_THREAD_PREFER_PTHREAD ON)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -308,7 +340,7 @@ endif()
 if(ANDROID)
   add_library(${BIN_TARGET} SHARED Source/main.cpp)
 elseif(UWP_LIB)
-  add_custom_target(${BIN_TARGET})  # we only need libdevilutionx
+  set(BIN_TARGET libdevilutionx)
 else()
   add_executable(${BIN_TARGET}
     WIN32
@@ -316,21 +348,18 @@ else()
     Source/main.cpp
     Packaging/windows/devilutionx.exe.manifest
     Packaging/windows/devilutionx.rc
-    Packaging/apple/AppIcon.icns
     Packaging/apple/LaunchScreen.storyboard)
 
     if(CMAKE_STRIP AND NOT DEVILUTIONX_DISABLE_STRIP)
       add_custom_command(
         TARGET ${BIN_TARGET} POST_BUILD
-        DEPENDS ${BIN_TARGET}
-        COMMAND $<$<CONFIG:Release>:${CMAKE_STRIP}>
-                $<$<CONFIG:MinSizeRel>:${CMAKE_STRIP}>
+        COMMAND $<$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>>:${CMAKE_STRIP}>
         ARGS $<TARGET_FILE:${BIN_TARGET}>)
     endif()
 endif()
 
 if(NOT UWP_LIB)
-  target_link_libraries(${BIN_TARGET} PRIVATE libdevilutionx)
+  target_link_dependencies(${BIN_TARGET} PRIVATE libdevilutionx)
 endif()
 
 if(GPERF)
@@ -339,6 +368,7 @@ endif()
 
 # Must be included after `BIN_TARGET` and `libdevilutionx` are defined.
 include(Assets)
+include(Mods)
 
 if(EMSCRIPTEN)
   target_link_options(${BIN_TARGET} PRIVATE --preload-file assets)
@@ -356,7 +386,6 @@ include(functions/set_relative_file_macro)
 set_relative_file_macro(${BIN_TARGET})
 
 if(APPLE)
-  set_source_files_properties("./Packaging/apple/AppIcon.icns" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
   set(MACOSX_BUNDLE_GUI_IDENTIFIER com.diasurgical.devilutionx)
   set(MACOSX_BUNDLE_COPYRIGHT Unlicense)
   set(MACOSX_BUNDLE_BUNDLE_NAME devilutionx)
@@ -369,11 +398,19 @@ if(APPLE)
     set(MACOSX_BUNDLE_REQUIRED_PLATFORM IPhoneOS)
     set_target_properties(${BIN_TARGET} PROPERTIES XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2")
     set(CMAKE_OSX_DEPLOYMENT_TARGET "9.0")
-  else()
+  elseif(DARWIN_MAJOR_VERSION GREATER_EQUAL 17)
     set(MACOSX_BUNDLE_REQUIRED_PLATFORM Carbon)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12.0")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13.0")
   endif()
-  set_target_properties(${BIN_TARGET} PROPERTIES MACOSX_BUNDLE_ICON_FILE "AppIcon.icns")
+  if(DARWIN_MAJOR_VERSION VERSION_LESS 9)
+    # Finder on OSX Tiger can only handle icns files with up to 128x128 icons.
+    set(_icon_file AppIcon_128)
+  else()
+    set(_icon_file AppIcon)
+  endif()
+  target_sources(${BIN_TARGET} PRIVATE "Packaging/apple/${_icon_file}.icns")
+  set_source_files_properties("./Packaging/apple/${_icon_file}.icns" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  set_target_properties(${BIN_TARGET} PROPERTIES MACOSX_BUNDLE_ICON_FILE "${_icon_file}.icns")
   set_target_properties(${BIN_TARGET} PROPERTIES MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Packaging/apple/Info.plist")
 
   install (TARGETS ${BIN_TARGET} DESTINATION ./)
@@ -403,6 +440,7 @@ if(NINTENDO_SWITCH)
     VERSION "${PROJECT_VERSION}"
   )
 
+  file(MAKE_DIRECTORY "${DEVILUTIONX_ASSETS_OUTPUT_DIRECTORY}")
   nx_create_nro(${BIN_TARGET}
     NACP  ${BIN_TARGET}.nacp
     ICON  "${PROJECT_SOURCE_DIR}/Packaging/switch/icon.jpg"
@@ -429,7 +467,7 @@ if(VITA)
       VERSION ${VITA_VERSION}
       NAME ${VITA_APP_NAME}
       FILE Packaging/vita/sce_sys sce_sys
-      FILE Packaging/resources/assets assets
+      FILE assets assets
       ${VITA_TRANSLATIONS_LIST}
     )
   endif()
@@ -473,10 +511,6 @@ if(NINTENDO_3DS)
   add_cia_target(${BIN_TARGET} ${APP_RSF} ${APP_BANNER} ${APP_AUDIO})
 endif()
 
-if(UWP_LIB)
-  target_compile_definitions(libdevilutionx PRIVATE __UWP__=1)
-endif()
-
 if(NXDK)
   target_link_libraries(${BIN_TARGET} PRIVATE "${NXDK_DIR}/lib/libnxdk_automount_d.lib")
   target_link_options(${BIN_TARGET} PRIVATE "-include:_automount_d_drive")
@@ -497,7 +531,7 @@ if(CPACK AND (APPLE OR BUILD_ASSETS_MPQ OR SRC_DIST))
     if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
       set(SDL2_WIN32_DLLS_DIR "${CMAKE_BINARY_DIR}")
     else()
-      set(SDL2_WIN32_DLLS_DIR "${SDL2_EXEC_PREFIX}/bin")
+      set(SDL2_WIN32_DLLS_DIR "${SDL2_EXEC_PREFIX}")
     endif()
     set(SDL2_WIN32_LICENSES_DIR "${PROJECT_SOURCE_DIR}/Packaging/resources")
 
@@ -509,9 +543,21 @@ if(CPACK AND (APPLE OR BUILD_ASSETS_MPQ OR SRC_DIST))
       "${SDL2_WIN32_LICENSES_DIR}/LICENSE*.txt"
       "${SDL2_WIN32_LICENSES_DIR}/README*.txt")
 
-    set(CPACK_PACKAGE_FILE_NAME "devilutionx")
     set(CPACK_PACKAGE_NAME ${project_name})
-    set(CPACK_GENERATOR "ZIP")
+    if(WIN_NSIS)
+      set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}_${PROJECT_VERSION}_Installer")
+      set(CPACK_GENERATOR "NSIS")
+      set(CPACK_PACKAGE_INSTALL_DIRECTORY "${PROJECT_NAME}")
+      set(CPACK_NSIS_MUI_ICON "${PROJECT_SOURCE_DIR}/Packaging/windows/icon.ico")
+      set(CPACK_NSIS_MUI_UNIICON "${PROJECT_SOURCE_DIR}/Packaging/windows/icon.ico")
+      set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE.md")
+      set(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
+      set(CPACK_PACKAGE_EXECUTABLES "devilutionx" "DevilutionX")
+      set(CPACK_NSIS_MUI_FINISHPAGE_RUN "${BIN_TARGET}")
+    else()
+      set(CPACK_PACKAGE_FILE_NAME "devilutionx")
+      set(CPACK_GENERATOR "ZIP")
+    endif()
     set(CPACK_STRIP_FILES TRUE)
     install(TARGETS ${BIN_TARGET} DESTINATION .)
     install(FILES "${PROJECT_SOURCE_DIR}/Packaging/windows/README.txt"
@@ -521,7 +567,7 @@ if(CPACK AND (APPLE OR BUILD_ASSETS_MPQ OR SRC_DIST))
       DESTINATION "."
     )
 
-    foreach(_SDL2_WIN32_DLL_PATH ${SDL2_WIN32_ALL_DLLS})
+    foreach(_SDL2_WIN32_DLL_PATH ${SDL2_WIN32_ALL_DLLS} ${WIN32_INSTALL_DLLS})
       install(FILES "${_SDL2_WIN32_DLL_PATH}"
         DESTINATION "."
       )
@@ -535,6 +581,12 @@ if(CPACK AND (APPLE OR BUILD_ASSETS_MPQ OR SRC_DIST))
 
     if(DISCORD_SHARED_LIB)
       install(FILES "${DISCORD_SHARED_LIB}"
+        DESTINATION "."
+      )
+    endif()
+
+    if(SCREEN_READER_INTEGRATION)
+      install(FILES "${Tolk_BINARY_DIR}/libTolk.dll"
         DESTINATION "."
       )
     endif()
@@ -581,13 +633,16 @@ if(CPACK AND (APPLE OR BUILD_ASSETS_MPQ OR SRC_DIST))
       DESTINATION "share/metainfo"
       RENAME "${project_name}.metainfo.xml"
     )
+    if(DISCORD_SHARED_LIB)
+      install(FILES "${DISCORD_SHARED_LIB}" DESTINATION "lib")
+    endif()
 
     # -G DEB
     set(CPACK_PACKAGE_CONTACT "anders@jenbo.dk")
     if(USE_SDL1)
     set(CPACK_DEBIAN_PACKAGE_DEPENDS "libsdl1.2debian")
     else()
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libsdl2-2.0-0")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libsdl2-2.0-0, libsdl2-image-2.0-0")
     endif()
     set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 
@@ -614,4 +669,10 @@ if(CPACK AND (APPLE OR BUILD_ASSETS_MPQ OR SRC_DIST))
   set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
   set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
   include(CPack)
+endif()
+
+resolve_target_link_dependencies()
+if(UWP_LIB)
+  get_target_property(_linked_objects libdevilutionx LINKED_OBJECTS)
+  target_sources(libdevilutionx PRIVATE ${_linked_objects})
 endif()

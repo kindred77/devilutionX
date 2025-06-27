@@ -5,13 +5,20 @@
  */
 #include "levels/trigs.h"
 
+#include <cmath>
+#include <cstdint>
+
 #include <fmt/format.h>
 
 #include "control.h"
+#include "controls/control_mode.hpp"
 #include "controls/plrctrls.h"
 #include "cursor.h"
-#include "error.h"
-#include "init.h"
+#include "diablo_msg.hpp"
+#include "game_mode.hpp"
+#include "multi.h"
+#include "utils/algorithm/container.hpp"
+#include "utils/is_of.hpp"
 #include "utils/language.h"
 #include "utils/utf8.hpp"
 
@@ -85,11 +92,11 @@ bool IsWarpOpen(dungeon_type type)
 		return true;
 
 	if (gbIsHellfire) {
-		if (type == DTYPE_CATACOMBS && myPlayer._pLevel >= 10)
+		if (type == DTYPE_CATACOMBS && myPlayer.getCharacterLevel() >= 10)
 			return true;
-		if (type == DTYPE_CAVES && myPlayer._pLevel >= 15)
+		if (type == DTYPE_CAVES && myPlayer.getCharacterLevel() >= 15)
 			return true;
-		if (type == DTYPE_HELL && myPlayer._pLevel >= 20)
+		if (type == DTYPE_HELL && myPlayer.getCharacterLevel() >= 20)
 			return true;
 		if (type == DTYPE_NEST && IsAnyOf(Quests[Q_FARMER]._qactive, QUEST_DONE, QUEST_HIVE_DONE))
 			return true;
@@ -168,7 +175,7 @@ void InitL2Triggers()
 	numtrigs = 0;
 	for (WorldTileCoord j = 0; j < MAXDUNY; j++) {
 		for (WorldTileCoord i = 0; i < MAXDUNX; i++) {
-			if (dPiece[i][j] == 266 && (i != Quests[Q_SCHAMB].position.x || j != Quests[Q_SCHAMB].position.y)) {
+			if (dPiece[i][j] == 266 && (!Quests[Q_SCHAMB].IsAvailable() || i != Quests[Q_SCHAMB].position.x || j != Quests[Q_SCHAMB].position.y)) {
 				trigs[numtrigs].position = { i, j };
 				trigs[numtrigs]._tmsg = WM_DIABPREVLVL;
 				numtrigs++;
@@ -441,8 +448,8 @@ bool ForceL2Trig()
 		if (dPiece[cursPosition.x][cursPosition.y] == tileId) {
 			for (int j = 0; j < numtrigs; j++) {
 				if (trigs[j]._tmsg == WM_DIABPREVLVL) {
-					int dx = abs(trigs[j].position.x - cursPosition.x);
-					int dy = abs(trigs[j].position.y - cursPosition.y);
+					int dx = std::abs(trigs[j].position.x - cursPosition.x);
+					int dy = std::abs(trigs[j].position.y - cursPosition.y);
 					if (dx < 4 && dy < 4) {
 						InfoString = fmt::format(fmt::runtime(_("Up to level {:d}")), currlevel - 1);
 						cursPosition = trigs[j].position;
@@ -470,8 +477,8 @@ bool ForceL2Trig()
 			if (dPiece[cursPosition.x][cursPosition.y] == tileId) {
 				for (int j = 0; j < numtrigs; j++) {
 					if (trigs[j]._tmsg == WM_DIABTWARPUP) {
-						int dx = abs(trigs[j].position.x - cursPosition.x);
-						int dy = abs(trigs[j].position.y - cursPosition.y);
+						int dx = std::abs(trigs[j].position.x - cursPosition.x);
+						int dy = std::abs(trigs[j].position.y - cursPosition.y);
 						if (dx < 4 && dy < 4) {
 							InfoString = _("Up to town");
 							cursPosition = trigs[j].position;
@@ -493,8 +500,8 @@ bool ForceL3Trig()
 			InfoString = fmt::format(fmt::runtime(_("Up to level {:d}")), currlevel - 1);
 			for (int j = 0; j < numtrigs; j++) {
 				if (trigs[j]._tmsg == WM_DIABPREVLVL) {
-					int dx = abs(trigs[j].position.x - cursPosition.x);
-					int dy = abs(trigs[j].position.y - cursPosition.y);
+					int dx = std::abs(trigs[j].position.x - cursPosition.x);
+					int dy = std::abs(trigs[j].position.y - cursPosition.y);
 					if (dx < 4 && dy < 4) {
 						cursPosition = trigs[j].position;
 						return true;
@@ -522,8 +529,8 @@ bool ForceL3Trig()
 			if (dPiece[cursPosition.x][cursPosition.y] == tileId) {
 				for (int j = 0; j < numtrigs; j++) {
 					if (trigs[j]._tmsg == WM_DIABTWARPUP) {
-						int dx = abs(trigs[j].position.x - cursPosition.x);
-						int dy = abs(trigs[j].position.y - cursPosition.y);
+						int dx = std::abs(trigs[j].position.x - cursPosition.x);
+						int dy = std::abs(trigs[j].position.y - cursPosition.y);
 						if (dx < 4 && dy < 4) {
 							InfoString = _("Up to town");
 							cursPosition = trigs[j].position;
@@ -569,8 +576,8 @@ bool ForceL4Trig()
 			if (dPiece[cursPosition.x][cursPosition.y] == tileId) {
 				for (int j = 0; j < numtrigs; j++) {
 					if (trigs[j]._tmsg == WM_DIABTWARPUP) {
-						int dx = abs(trigs[j].position.x - cursPosition.x);
-						int dy = abs(trigs[j].position.y - cursPosition.y);
+						int dx = std::abs(trigs[j].position.x - cursPosition.x);
+						int dy = std::abs(trigs[j].position.y - cursPosition.y);
 						if (dx < 4 && dy < 4) {
 							InfoString = _("Up to town");
 							cursPosition = trigs[j].position;
@@ -631,8 +638,8 @@ bool ForceHiveTrig()
 			if (dPiece[cursPosition.x][cursPosition.y] == tileId) {
 				for (int j = 0; j < numtrigs; j++) {
 					if (trigs[j]._tmsg == WM_DIABTWARPUP) {
-						int dx = abs(trigs[j].position.x - cursPosition.x);
-						int dy = abs(trigs[j].position.y - cursPosition.y);
+						int dx = std::abs(trigs[j].position.x - cursPosition.x);
+						int dy = std::abs(trigs[j].position.y - cursPosition.y);
 						if (dx < 4 && dy < 4) {
 							InfoString = _("Up to town");
 							cursPosition = trigs[j].position;
@@ -680,8 +687,8 @@ bool ForceCryptTrig()
 			if (dPiece[cursPosition.x][cursPosition.y] == tileId) {
 				for (int j = 0; j < numtrigs; j++) {
 					if (trigs[j]._tmsg == WM_DIABTWARPUP) {
-						int dx = abs(trigs[j].position.x - cursPosition.x);
-						int dy = abs(trigs[j].position.y - cursPosition.y);
+						int dx = std::abs(trigs[j].position.x - cursPosition.x);
+						int dy = std::abs(trigs[j].position.y - cursPosition.y);
 						if (dx < 4 && dy < 4) {
 							InfoString = _("Up to town");
 							cursPosition = trigs[j].position;
@@ -889,19 +896,19 @@ void CheckTriggers()
 				diablo_message abortflag;
 
 				auto position = myPlayer.position.tile;
-				if (trigs[i]._tlvl == 5 && myPlayer._pLevel < 8) {
+				if (trigs[i]._tlvl == 5 && myPlayer.getCharacterLevel() < 8) {
 					abort = true;
 					position.y += 1;
 					abortflag = EMSG_REQUIRES_LVL_8;
 				}
 
-				if (IsAnyOf(trigs[i]._tlvl, 9, 17) && myPlayer._pLevel < 13) {
+				if (IsAnyOf(trigs[i]._tlvl, 9, 17) && myPlayer.getCharacterLevel() < 13) {
 					abort = true;
 					position.x += 1;
 					abortflag = EMSG_REQUIRES_LVL_13;
 				}
 
-				if (IsAnyOf(trigs[i]._tlvl, 13, 21) && myPlayer._pLevel < 17) {
+				if (IsAnyOf(trigs[i]._tlvl, 13, 21) && myPlayer.getCharacterLevel() < 17) {
 					abort = true;
 					position.y += 1;
 					abortflag = EMSG_REQUIRES_LVL_17;
@@ -932,10 +939,9 @@ bool EntranceBoundaryContains(Point entrance, Point position)
 {
 	constexpr Displacement entranceOffsets[7] = { { 0, 0 }, { -1, 0 }, { 0, -1 }, { -1, -1 }, { -2, -1 }, { -1, -2 }, { -2, -2 } };
 
-	return std::any_of(
-	    std::begin(entranceOffsets),
-	    std::end(entranceOffsets),
-	    [&](auto offset) { return entrance + offset == position; });
+	return c_any_of(
+	    entranceOffsets,
+	    [=](Displacement offset) { return entrance + offset == position; });
 }
 
 } // namespace devilution

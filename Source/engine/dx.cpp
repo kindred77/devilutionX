@@ -6,9 +6,13 @@
 #include "engine/dx.h"
 
 #include <SDL.h>
+#include <cstdint>
 
+#include "controls/control_mode.hpp"
 #include "controls/plrctrls.h"
-#include "engine.h"
+#include "engine/render/primitive_render.hpp"
+#include "headless_mode.hpp"
+#include "init.hpp"
 #include "options.h"
 #include "utils/display.h"
 #include "utils/log.hpp"
@@ -32,7 +36,6 @@ SDLTextureUniquePtr texture;
 
 /** Currently active palette */
 SDLPaletteUniquePtr Palette;
-unsigned int pal_surface_palette_version = 0;
 
 /** 24-bit renderer texture surface */
 SDLSurfaceUniquePtr RendererTextureSurface;
@@ -69,7 +72,7 @@ bool CanRenderDirectlyToOutputSurface()
  */
 void LimitFrameRate()
 {
-	if (!*sgOptions.Graphics.limitFPS)
+	if (*GetOptions().Graphics.frameRateControl != FrameRateControl::CPUSleep)
 		return;
 	static uint32_t frameDeadline;
 	uint32_t tc = SDL_GetTicks() * 1000;
@@ -90,9 +93,9 @@ void dx_init()
 	SDL_ShowWindow(ghMainWnd);
 #endif
 
+	Palette = SDLWrap::AllocPalette();
 	palette_init();
 	CreateBackBuffer();
-	pal_surface_palette_version = 1;
 }
 
 Surface GlobalBackBuffer()
@@ -113,7 +116,8 @@ void dx_cleanup()
 	RendererTextureSurface = nullptr;
 #ifndef USE_SDL1
 	texture = nullptr;
-	if (*sgOptions.Graphics.upscale)
+	FreeVirtualGamepadTextures();
+	if (*GetOptions().Graphics.upscale)
 		SDL_DestroyRenderer(renderer);
 #endif
 	SDL_DestroyWindow(ghMainWnd);
@@ -144,11 +148,6 @@ void CreateBackBuffer()
 	// time the global `palette` is changed. No need to do anything here as
 	// the global `palette` doesn't have any colors set yet.
 #endif
-}
-
-void InitPalette()
-{
-	Palette = SDLWrap::AllocPalette();
 }
 
 void BltFast(SDL_Rect *srcRect, SDL_Rect *dstRect)
@@ -245,7 +244,7 @@ void RenderPresent()
 		}
 		SDL_RenderPresent(renderer);
 
-		if (!*sgOptions.Graphics.vSync) {
+		if (*GetOptions().Graphics.frameRateControl != FrameRateControl::VerticalSync) {
 			LimitFrameRate();
 		}
 	} else {
@@ -267,10 +266,4 @@ void RenderPresent()
 #endif
 }
 
-void PaletteGetEntries(int dwNumEntries, SDL_Color *lpEntries)
-{
-	for (int i = 0; i < dwNumEntries; i++) {
-		lpEntries[i] = system_palette[i];
-	}
-}
 } // namespace devilution

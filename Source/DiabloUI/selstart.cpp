@@ -15,10 +15,11 @@ bool endMenu;
 std::vector<std::unique_ptr<UiListItem>> vecDialogItems;
 std::vector<std::unique_ptr<UiItemBase>> vecDialog;
 
-void ItemSelected(int value)
+void ItemSelected(size_t value)
 {
 	auto option = static_cast<StartUpGameMode>(vecDialogItems[value]->m_value);
-	sgOptions.StartUp.gameMode.SetValue(option);
+	GetOptions().GameMode.gameMode.SetValue(option);
+	GetOptions().Mods.SetHellfireEnabled(option == StartUpGameMode::Hellfire);
 	SaveOptions();
 	endMenu = true;
 }

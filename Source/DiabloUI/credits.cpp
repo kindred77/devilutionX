@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -13,6 +14,7 @@
 #include "engine/render/text_render.hpp"
 #include "hwcursor.hpp"
 #include "utils/display.h"
+#include "utils/is_of.hpp"
 #include "utils/language.h"
 #include "utils/log.hpp"
 #include "utils/sdl_compat.h"
@@ -35,7 +37,7 @@ public:
 	CreditsRenderer(char const *const *text, std::size_t textLines)
 	{
 		for (size_t i = 0; i < textLines; i++) {
-			string_view orgText = _(text[i]);
+			std::string_view orgText = _(text[i]);
 
 			uint16_t offset = 0;
 			size_t indexFirstNotTab = 0;
@@ -114,7 +116,7 @@ void CreditsRenderer::Render()
 	ScaleOutputRect(&viewport);
 
 	// We use unscaled coordinates for calculation throughout.
-	Sint16 destY = uiPosition.y + VIEWPORT.y - (offsetY - linesBegin * LINE_H);
+	Sint16 destY = static_cast<Sint16>(uiPosition.y + VIEWPORT.y - (offsetY - linesBegin * LINE_H));
 	for (std::size_t i = linesBegin; i < linesEnd; ++i, destY += LINE_H) {
 		Sint16 destX = uiPosition.x + VIEWPORT.x + 31;
 
@@ -126,7 +128,8 @@ void CreditsRenderer::Render()
 		dstRect.y -= viewport.y;
 
 		const Surface &out = Surface(DiabloUiSurface(), viewport);
-		DrawString(out, lineContent.text, Point { dstRect.x, dstRect.y }, UiFlags::FontSizeDialog | UiFlags::ColorDialogWhite, -1);
+		DrawString(out, lineContent.text, Point { dstRect.x, dstRect.y },
+		    { .flags = UiFlags::FontSizeDialog | UiFlags::ColorDialogWhite, .spacing = -1 });
 	}
 }
 

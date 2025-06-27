@@ -6,10 +6,14 @@
 #include "clx_render.hpp"
 
 #include <algorithm>
+#include <cstdint>
 
+#include "engine/point.hpp"
 #include "engine/render/blit_impl.hpp"
-#include "engine/render/scrollrt.h"
+#include "engine/surface.hpp"
 #include "utils/attributes.h"
+#include "utils/clx_decode.hpp"
+#include "utils/static_vector.hpp"
 
 #ifdef DEBUG_CLX
 #include <fmt/format.h>
@@ -28,41 +32,22 @@ namespace {
  *    indicates a fill-N command.
  */
 
-constexpr bool IsCl2Opaque(uint8_t control)
-{
-	constexpr uint8_t Cl2OpaqueMin = 0x80;
-	return control >= Cl2OpaqueMin;
-}
+struct BlitCommandInfo {
+	const uint8_t *srcEnd;
+	unsigned length;
+};
 
-constexpr uint8_t GetCl2OpaquePixelsWidth(uint8_t control)
+BlitCommandInfo ClxBlitInfo(const uint8_t *src)
 {
-	return -static_cast<std::int8_t>(control);
-}
-
-constexpr bool IsCl2OpaqueFill(uint8_t control)
-{
-	constexpr uint8_t Cl2FillMax = 0xBE;
-	return control <= Cl2FillMax;
-}
-
-constexpr uint8_t GetCl2OpaqueFillWidth(uint8_t control)
-{
-	constexpr uint8_t Cl2FillEnd = 0xBF;
-	return static_cast<int_fast16_t>(Cl2FillEnd - control);
-}
-
-BlitCommand Cl2GetBlitCommand(const uint8_t *src)
-{
-	const uint8_t control = *src++;
-	if (!IsCl2Opaque(control))
-		return BlitCommand { BlitType::Transparent, src, control, 0 };
-	if (IsCl2OpaqueFill(control)) {
-		const uint8_t width = GetCl2OpaqueFillWidth(control);
-		const uint8_t color = *src++;
-		return BlitCommand { BlitType::Fill, src, width, color };
+	const uint8_t control = *src;
+	if (!IsClxOpaque(control))
+		return { src + 1, control };
+	if (IsClxOpaqueFill(control)) {
+		const uint8_t width = GetClxOpaqueFillWidth(control);
+		return { src + 2, width };
 	}
-	const uint8_t width = GetCl2OpaquePixelsWidth(control);
-	return BlitCommand { BlitType::Pixels, src + width, width, 0 };
+	const uint8_t width = GetClxOpaquePixelsWidth(control);
+	return { src + 1 + width, width };
 }
 
 struct ClipX {
@@ -87,34 +72,16 @@ struct RenderSrc {
 	uint_fast16_t width;
 };
 
-struct SkipSize {
-	int_fast16_t wholeLines;
-	int_fast16_t xOffset;
-};
-DVL_ALWAYS_INLINE DVL_ATTRIBUTE_HOT SkipSize GetSkipSize(int_fast16_t overrun, int_fast16_t srcWidth)
-{
-	SkipSize result;
-	result.wholeLines = overrun / srcWidth;
-	result.xOffset = overrun - srcWidth * result.wholeLines;
-	return result;
-}
-
 DVL_ALWAYS_INLINE DVL_ATTRIBUTE_HOT const uint8_t *SkipRestOfLineWithOverrun(
     const uint8_t *src, int_fast16_t srcWidth, SkipSize &skipSize)
 {
 	int_fast16_t remainingWidth = srcWidth - skipSize.xOffset;
 	while (remainingWidth > 0) {
-		const BlitCommand cmd = Cl2GetBlitCommand(src);
-		src = cmd.srcEnd;
-		remainingWidth -= cmd.length;
+		const auto [srcEnd, length] = ClxBlitInfo(src);
+		src = srcEnd;
+		remainingWidth -= length;
 	}
-	if (remainingWidth < 0) {
-		skipSize = GetSkipSize(-remainingWidth, srcWidth);
-		++skipSize.wholeLines;
-	} else {
-		skipSize.wholeLines = 1;
-		skipSize.xOffset = 0;
-	}
+	skipSize = GetSkipSize(remainingWidth, srcWidth);
 	return src;
 }
 
@@ -122,7 +89,7 @@ DVL_ALWAYS_INLINE DVL_ATTRIBUTE_HOT const uint8_t *SkipRestOfLineWithOverrun(
 DVL_ALWAYS_INLINE DVL_ATTRIBUTE_HOT int_fast16_t SkipLinesForRenderBackwardsWithOverrun(
     Point &position, RenderSrc &src, int_fast16_t dstHeight)
 {
-	SkipSize skipSize = { 0, 0 };
+	SkipSize skipSize { 0, 0 };
 	while (position.y >= dstHeight && src.begin != src.end) {
 		src.begin = SkipRestOfLineWithOverrun(
 		    src.begin, static_cast<int_fast16_t>(src.width), skipSize);
@@ -147,21 +114,25 @@ void DoRenderBackwardsClipY(
 		auto remainingWidth = static_cast<int_fast16_t>(src.width) - xOffset;
 		dst += xOffset;
 		while (remainingWidth > 0) {
-			BlitCommand cmd = Cl2GetBlitCommand(src.begin);
-			blitFn(cmd, dst, src.begin + 1);
-			src.begin = cmd.srcEnd;
-			dst += cmd.length;
-			remainingWidth -= cmd.length;
+			uint8_t v = *src.begin++;
+			if (IsClxOpaque(v)) {
+				if (IsClxOpaqueFill(v)) {
+					v = GetClxOpaqueFillWidth(v);
+					const uint8_t color = *src.begin++;
+					blitFn(v, color, dst);
+				} else {
+					v = GetClxOpaquePixelsWidth(v);
+					blitFn(v, dst, src.begin);
+					src.begin += v;
+				}
+			}
+			dst += v;
+			remainingWidth -= v;
 		}
-		dst -= dstPitch + src.width - remainingWidth;
 
-		if (remainingWidth < 0) {
-			const auto skipSize = GetSkipSize(-remainingWidth, static_cast<int_fast16_t>(src.width));
-			xOffset = skipSize.xOffset;
-			dst -= skipSize.wholeLines * dstPitch;
-		} else {
-			xOffset = 0;
-		}
+		const SkipSize skipSize = GetSkipSize(remainingWidth, static_cast<int_fast16_t>(src.width));
+		xOffset = skipSize.xOffset;
+		dst -= skipSize.wholeLines * dstPitch + src.width - remainingWidth;
 	}
 }
 
@@ -189,48 +160,56 @@ void DoRenderBackwardsClipXY(
 			remainingWidth += remainingLeftClip;
 		}
 		while (remainingLeftClip > 0) {
-			BlitCommand cmd = Cl2GetBlitCommand(src.begin);
-			if (static_cast<int_fast16_t>(cmd.length) > remainingLeftClip) {
-				const auto overshoot = static_cast<int>(cmd.length - remainingLeftClip);
-				cmd.length = std::min<unsigned>(remainingWidth, overshoot);
-				blitFn(cmd, dst, src.begin + 1 + remainingLeftClip);
-				dst += cmd.length;
+			auto [srcEnd, length] = ClxBlitInfo(src.begin);
+			if (static_cast<int_fast16_t>(length) > remainingLeftClip) {
+				const uint8_t control = *src.begin;
+				const auto overshoot = static_cast<int>(length - remainingLeftClip);
+				length = std::min<unsigned>(remainingWidth, overshoot);
+				if (IsClxOpaque(control)) {
+					if (IsClxOpaqueFill(control)) {
+						blitFn(length, src.begin[1], dst);
+					} else {
+						blitFn(length, dst, src.begin + 1 + remainingLeftClip);
+					}
+				}
+				dst += length;
 				remainingWidth -= overshoot;
-				src.begin = cmd.srcEnd;
+				src.begin = srcEnd;
 				break;
 			}
-			src.begin = cmd.srcEnd;
-			remainingLeftClip -= cmd.length;
+			src.begin = srcEnd;
+			remainingLeftClip -= length;
 		}
 		while (remainingWidth > 0) {
-			BlitCommand cmd = Cl2GetBlitCommand(src.begin);
-			const unsigned unclippedLength = cmd.length;
-			cmd.length = std::min<unsigned>(remainingWidth, cmd.length);
-			blitFn(cmd, dst, src.begin + 1);
-			src.begin = cmd.srcEnd;
-			dst += cmd.length;
+			auto [srcEnd, length] = ClxBlitInfo(src.begin);
+			const uint8_t control = *src.begin;
+			const unsigned unclippedLength = length;
+			length = std::min<unsigned>(remainingWidth, length);
+			if (IsClxOpaque(control)) {
+				if (IsClxOpaqueFill(control)) {
+					blitFn(length, src.begin[1], dst);
+				} else {
+					blitFn(length, dst, src.begin + 1);
+				}
+			}
+			src.begin = srcEnd;
+			dst += length;
 			remainingWidth -= unclippedLength; // result can be negative
 		}
-
-		// We've advanced `dst` by `clipX.width`.
-		//
-		// Set dst to (position.y - 1, position.x)
-		dst -= dstPitch + clipX.width;
 
 		// `remainingWidth` can be negative, in which case it is the amount of pixels
 		// that the source has overran the line.
 		remainingWidth += clipX.right;
-		SkipSize skipSize { 0, 0 };
+		SkipSize skipSize;
 		if (remainingWidth > 0) {
 			skipSize.xOffset = static_cast<int_fast16_t>(src.width) - remainingWidth;
 			src.begin = SkipRestOfLineWithOverrun(
 			    src.begin, static_cast<int_fast16_t>(src.width), skipSize);
-			--skipSize.wholeLines;
-		} else if (remainingWidth < 0) {
-			skipSize = GetSkipSize(-remainingWidth, static_cast<int_fast16_t>(src.width));
+		} else {
+			skipSize = GetSkipSize(remainingWidth, static_cast<int_fast16_t>(src.width));
 		}
 		xOffset = skipSize.xOffset;
-		dst -= dstPitch * skipSize.wholeLines;
+		dst -= dstPitch * skipSize.wholeLines + clipX.width;
 	}
 }
 
@@ -254,414 +233,189 @@ void DoRenderBackwards(
 	}
 }
 
-template <bool North, bool West, bool South, bool East>
-DVL_ALWAYS_INLINE DVL_ATTRIBUTE_HOT void RenderOutlineForPixel(uint8_t *dst, int dstPitch, uint8_t color)
+constexpr size_t MaxOutlinePixels = 4096;
+constexpr size_t MaxOutlineSpriteWidth = 253;
+using OutlinePixels = StaticVector<PointOf<uint8_t>, MaxOutlinePixels>;
+using OutlineRowSolidRuns = StaticVector<std::pair<uint8_t, uint8_t>, MaxOutlineSpriteWidth / 2 + 1>;
+
+struct OutlinePixelsCacheEntry {
+	OutlinePixels outlinePixels;
+	const void *spriteData = nullptr;
+	bool skipColorIndexZero;
+};
+OutlinePixelsCacheEntry OutlinePixelsCache;
+
+void PopulateOutlinePixelsForRow(
+    const OutlineRowSolidRuns &runs,
+    const bool *DVL_RESTRICT below,
+    bool *DVL_RESTRICT cur,
+    bool *DVL_RESTRICT above,
+    uint8_t y,
+    OutlinePixels &result)
 {
-	if (North)
-		dst[-dstPitch] = color;
-	if (West)
-		dst[-1] = color;
-	if (East)
-		dst[1] = color;
-	if (South)
-		dst[dstPitch] = color;
+	DVL_ASSUME(!runs.empty());
+	for (const auto &[begin, end] : runs) {
+		if (!cur[static_cast<uint8_t>(begin - 1)]) {
+			result.emplace_back(static_cast<uint8_t>(begin - 1), y);
+			cur[static_cast<uint8_t>(begin - 1)] = true;
+		}
+		if (!cur[end]) {
+			result.emplace_back(end, y);
+			cur[end] = true;
+		}
+		for (uint8_t x = begin; x < end; ++x) {
+			if (!below[x]) {
+				result.emplace_back(x, static_cast<uint8_t>(y + 1));
+			}
+			if (!above[x]) {
+				result.emplace_back(x, static_cast<uint8_t>(y - 1));
+				above[x] = true;
+			}
+		}
+	}
 }
 
-template <bool North, bool West, bool South, bool East, bool SkipColorIndexZero = true>
-DVL_ALWAYS_INLINE DVL_ATTRIBUTE_HOT void RenderOutlineForPixel(uint8_t *dst, int dstPitch, uint8_t srcColor, uint8_t color)
+void AppendOutlineRowSolidRuns(uint8_t x, uint8_t w, OutlineRowSolidRuns &solidRuns)
 {
-	if (SkipColorIndexZero && srcColor == 0)
-		return;
-	RenderOutlineForPixel<North, West, South, East>(dst, dstPitch, color);
-}
-
-template <bool North, bool West, bool South, bool East>
-DVL_ALWAYS_INLINE DVL_ATTRIBUTE_HOT void RenderOutlineForPixels(uint8_t *dst, int dstPitch, int width, uint8_t color)
-{
-	if (North)
-		std::memset(dst - dstPitch, color, width);
-
-	if (West && East)
-		std::memset(dst - 1, color, width + 2);
-	else if (West)
-		std::memset(dst - 1, color, width);
-	else if (East)
-		std::memset(dst + 1, color, width);
-
-	if (South)
-		std::memset(dst + dstPitch, color, width);
-}
-
-template <bool North, bool West, bool South, bool East, bool SkipColorIndexZero = true>
-DVL_ALWAYS_INLINE DVL_ATTRIBUTE_HOT void RenderOutlineForPixels(uint8_t *dst, int dstPitch, int width, const uint8_t *src, uint8_t color)
-{
-	if (SkipColorIndexZero) {
-		while (width-- > 0)
-			RenderOutlineForPixel<North, West, South, East>(dst++, dstPitch, *src++, color);
+	if (solidRuns.empty() || solidRuns.back().second != x) {
+		solidRuns.emplace_back(x, x + w);
 	} else {
-		RenderOutlineForPixels<North, West, South, East>(dst, dstPitch, width, color);
+		solidRuns.back().second = static_cast<uint8_t>(x + w);
 	}
 }
 
-template <bool Fill, bool North, bool West, bool South, bool East, bool SkipColorIndexZero>
-uint8_t *RenderClxOutlinePixelsCheckFirstColumn(
-    uint8_t *dst, int dstPitch, int dstX,
-    const uint8_t *src, uint8_t width, uint8_t color)
+template <bool SkipColorIndexZero>
+void GetOutline(ClxSprite sprite, OutlinePixels &result) // NOLINT(readability-function-cognitive-complexity)
 {
-	if (dstX == -1) {
-		if (Fill) {
-			RenderOutlineForPixel</*North=*/false, /*West=*/false, /*South=*/false, East>(
-			    dst++, dstPitch, color);
-		} else {
-			RenderOutlineForPixel</*North=*/false, /*West=*/false, /*South=*/false, East, SkipColorIndexZero>(
-			    dst++, dstPitch, *src++, color);
-		}
-		--width;
-	}
-	if (width > 0) {
-		if (Fill) {
-			RenderOutlineForPixel<North, /*West=*/false, South, East>(dst++, dstPitch, color);
-		} else {
-			RenderOutlineForPixel<North, /*West=*/false, South, East, SkipColorIndexZero>(dst++, dstPitch, *src++, color);
-		}
-		--width;
-	}
-	if (width > 0) {
-		if (Fill) {
-			RenderOutlineForPixels<North, West, South, East>(dst, dstPitch, width, color);
-		} else {
-			RenderOutlineForPixels<North, West, South, East, SkipColorIndexZero>(dst, dstPitch, width, src, color);
-		}
-		dst += width;
-	}
-	return dst;
-}
+	const unsigned width = sprite.width();
+	assert(width < MaxOutlineSpriteWidth);
 
-template <bool Fill, bool North, bool West, bool South, bool East, bool SkipColorIndexZero>
-uint8_t *RenderClxOutlinePixelsCheckLastColumn(
-    uint8_t *dst, int dstPitch, int dstX, int dstW,
-    const uint8_t *src, uint8_t width, uint8_t color)
-{
-	const bool lastPixel = dstX < dstW && width >= 1;
-	const bool oobPixel = dstX + width > dstW;
-	const int numSpecialPixels = (lastPixel ? 1 : 0) + (oobPixel ? 1 : 0);
-	if (width > numSpecialPixels) {
-		width -= numSpecialPixels;
-		if (Fill) {
-			RenderOutlineForPixels<North, West, South, East>(dst, dstPitch, width, color);
-		} else {
-			RenderOutlineForPixels<North, West, South, East, SkipColorIndexZero>(dst, dstPitch, width, src, color);
-			src += width;
-		}
-		dst += width;
-	}
-	if (lastPixel) {
-		if (Fill) {
-			RenderOutlineForPixel<North, West, South, /*East=*/false>(dst++, dstPitch, color);
-		} else {
-			RenderOutlineForPixel<North, West, South, /*East=*/false, SkipColorIndexZero>(dst++, dstPitch, *src++, color);
-		}
-	}
-	if (oobPixel) {
-		if (Fill) {
-			RenderOutlineForPixel</*North=*/false, West, /*South=*/false, /*East=*/false>(dst++, dstPitch, color);
-		} else {
-			RenderOutlineForPixel</*North=*/false, West, /*South=*/false, /*East=*/false, SkipColorIndexZero>(dst++, dstPitch, *src++, color);
-		}
-	}
-	return dst;
-}
+	int x = 1;
+	auto y = static_cast<uint8_t>(sprite.height());
 
-template <bool Fill, bool North, bool West, bool South, bool East, bool SkipColorIndexZero, bool CheckFirstColumn, bool CheckLastColumn>
-uint8_t *RenderClxOutlinePixels(
-    uint8_t *dst, int dstPitch, int dstX, int dstW,
-    const uint8_t *src, uint8_t width, uint8_t color)
-{
-	if (SkipColorIndexZero && Fill && *src == 0)
-		return dst + width;
+	bool rows[3][MaxOutlineSpriteWidth + 2] = { {}, {}, {} };
+	bool *rowAbove = rows[0];
+	bool *row = rows[1];
+	bool *rowBelow = rows[2];
 
-	if (CheckFirstColumn && dstX <= 0) {
-		return RenderClxOutlinePixelsCheckFirstColumn<Fill, North, West, South, East, SkipColorIndexZero>(
-		    dst, dstPitch, dstX, src, width, color);
-	}
-	if (CheckLastColumn && dstX + width >= dstW) {
-		return RenderClxOutlinePixelsCheckLastColumn<Fill, North, West, South, East, SkipColorIndexZero>(
-		    dst, dstPitch, dstX, dstW, src, width, color);
-	}
-	if (Fill) {
-		RenderOutlineForPixels<North, West, South, East>(dst, dstPitch, width, color);
-	} else {
-		RenderOutlineForPixels<North, West, South, East, SkipColorIndexZero>(dst, dstPitch, width, src, color);
-	}
-	return dst + width;
-}
+	OutlineRowSolidRuns solidRuns[2];
+	OutlineRowSolidRuns *solidRunAbove = &solidRuns[0];
+	OutlineRowSolidRuns *solidRun = &solidRuns[1];
 
-template <bool North, bool West, bool South, bool East, bool SkipColorIndexZero,
-    bool ClipWidth = false, bool CheckFirstColumn = false, bool CheckLastColumn = false>
-const uint8_t *RenderClxOutlineRowClipped( // NOLINT(readability-function-cognitive-complexity)
-    const Surface &out, Point position, const uint8_t *src, std::size_t srcWidth,
-    ClipX clipX, uint8_t color, SkipSize &skipSize)
-{
-	int_fast16_t remainingWidth = clipX.width;
-	uint8_t v;
-
-	auto *dst = &out[position];
-	const auto dstPitch = out.pitch();
-
-	const auto renderPixels = [&](bool fill, uint8_t w) {
-		if (fill) {
-			dst = RenderClxOutlinePixels</*Fill=*/true, North, West, South, East, SkipColorIndexZero, CheckFirstColumn, CheckLastColumn>(
-			    dst, dstPitch, position.x, out.w(), src, w, color);
-			++src;
-		} else {
-			dst = RenderClxOutlinePixels</*Fill=*/false, North, West, South, East, SkipColorIndexZero, CheckFirstColumn, CheckLastColumn>(
-			    dst, dstPitch, position.x, out.w(), src, w, color);
-			src += v;
-		}
-	};
-
-	if (ClipWidth) {
-		auto remainingLeftClip = clipX.left - skipSize.xOffset;
-		if (skipSize.xOffset > clipX.left) {
-			position.x += static_cast<int>(skipSize.xOffset - clipX.left);
-			dst += skipSize.xOffset - clipX.left;
-		}
-		while (remainingLeftClip > 0) {
-			v = static_cast<uint8_t>(*src++);
-			if (IsCl2Opaque(v)) {
-				const bool fill = IsCl2OpaqueFill(v);
-				v = fill ? GetCl2OpaqueFillWidth(v) : GetCl2OpaquePixelsWidth(v);
-				if (v > remainingLeftClip) {
-					const uint8_t overshoot = v - remainingLeftClip;
-					renderPixels(fill, overshoot);
-					position.x += overshoot;
+	const uint8_t *src = sprite.pixelData();
+	const uint8_t *const end = src + sprite.pixelDataSize();
+	while (src < end) {
+		while (x <= static_cast<int>(width)) {
+			const auto v = static_cast<uint8_t>(*src++);
+			uint8_t w;
+			if (IsClxOpaque(v)) {
+				if constexpr (SkipColorIndexZero) {
+					if (IsClxOpaqueFill(v)) {
+						w = GetClxOpaqueFillWidth(v);
+						const auto color = static_cast<uint8_t>(*src++);
+						if (color != 0) {
+							AppendOutlineRowSolidRuns(x, w, *solidRunAbove);
+						}
+					} else {
+						w = GetClxOpaquePixelsWidth(v);
+						bool prevZero = solidRunAbove->empty() || solidRunAbove->back().second != x;
+						for (unsigned i = 0; i < w; ++i) {
+							const auto color = static_cast<uint8_t>(src[i]);
+							if (color == 0) {
+								if (!prevZero) ++solidRunAbove->back().second;
+								prevZero = true;
+							} else {
+								if (prevZero) solidRunAbove->emplace_back(x + i, x + i);
+								++solidRunAbove->back().second;
+								prevZero = false;
+							}
+						}
+						src += w;
+					}
 				} else {
-					src += fill ? 1 : v;
+					if (IsClxOpaqueFill(v)) {
+						w = GetClxOpaqueFillWidth(v);
+						++src;
+					} else {
+						w = GetClxOpaquePixelsWidth(v);
+						src += w;
+					}
+					AppendOutlineRowSolidRuns(x, w, *solidRunAbove);
 				}
 			} else {
-				if (v > remainingLeftClip) {
-					const uint8_t overshoot = v - remainingLeftClip;
-					dst += overshoot;
-					position.x += overshoot;
-				}
+				w = v;
 			}
-			remainingLeftClip -= v;
+			x += w;
 		}
-		remainingWidth += remainingLeftClip;
-	} else {
-		position.x += static_cast<int>(skipSize.xOffset);
-		dst += skipSize.xOffset;
-		remainingWidth -= skipSize.xOffset;
-	}
 
-	while (remainingWidth > 0) {
-		v = static_cast<uint8_t>(*src++);
-		if (IsCl2Opaque(v)) {
-			const bool fill = IsCl2OpaqueFill(v);
-			v = fill ? GetCl2OpaqueFillWidth(v) : GetCl2OpaquePixelsWidth(v);
-			renderPixels(fill, ClipWidth ? std::min(remainingWidth, static_cast<int_fast16_t>(v)) : v);
+		for (const auto &[xBegin, xEnd] : *solidRunAbove) {
+			std::fill(rowAbove + xBegin, rowAbove + xEnd, true);
+		}
+
+		if (!solidRun->empty()) {
+			PopulateOutlinePixelsForRow(*solidRun, rowBelow, row, rowAbove, static_cast<uint8_t>(y + 1), result);
+		}
+
+		// (0, 1, 2) => (2, 0, 1)
+		std::swap(row, rowBelow);
+		std::swap(row, rowAbove);
+		std::fill_n(rowAbove, width, false);
+
+		std::swap(solidRunAbove, solidRun);
+		solidRunAbove->clear();
+
+		if (x > static_cast<int>(width + 1)) {
+			// Transparent overrun.
+			const unsigned numWholeTransparentLines = (x - 1) / width;
+			if (numWholeTransparentLines > 1) {
+				if (!solidRun->empty()) {
+					PopulateOutlinePixelsForRow(*solidRun, rowBelow, row, rowAbove, y, result);
+				}
+				solidRun->clear();
+				std::fill_n(row, width, false);
+			}
+			if (numWholeTransparentLines > 2) std::fill_n(rowBelow, width, false);
+			y -= static_cast<uint8_t>(numWholeTransparentLines);
+			x = static_cast<int>((x - 1) % width) + 1;
 		} else {
-			dst += v;
-		}
-		remainingWidth -= v;
-		position.x += v;
-	}
-
-	if (ClipWidth) {
-		remainingWidth += clipX.right;
-		if (remainingWidth > 0) {
-			skipSize.xOffset = static_cast<int_fast16_t>(srcWidth) - remainingWidth;
-			src = SkipRestOfLineWithOverrun(src, static_cast<int_fast16_t>(srcWidth), skipSize);
-			if (skipSize.wholeLines > 1)
-				dst -= dstPitch * (skipSize.wholeLines - 1);
-			remainingWidth = -skipSize.xOffset;
+			--y;
+			x = 1;
 		}
 	}
-	if (remainingWidth < 0) {
-		skipSize = GetSkipSize(-remainingWidth, static_cast<int_fast16_t>(srcWidth));
-		++skipSize.wholeLines;
-	} else {
-		skipSize.xOffset = 0;
-		skipSize.wholeLines = 1;
-	}
-
-	return src;
-}
-
-template <bool SkipColorIndexZero>
-void RenderClxOutlineClippedY(const Surface &out, Point position, RenderSrc src, // NOLINT(readability-function-cognitive-complexity)
-    uint8_t color)
-{
-	// Skip the bottom clipped lines.
-	const int dstHeight = out.h();
-	SkipSize skipSize = { 0, SkipLinesForRenderBackwardsWithOverrun(position, src, dstHeight) };
-	if (src.begin == src.end)
-		return;
-
-	const ClipX clipX = { 0, 0, static_cast<decltype(ClipX {}.width)>(src.width) };
-
-	if (position.y == dstHeight) {
-		// After-bottom line - can only draw north.
-		src.begin = RenderClxOutlineRowClipped</*North=*/true, /*West=*/false, /*South=*/false, /*East=*/false, SkipColorIndexZero>(
-		    out, position, src.begin, src.width, clipX, color, skipSize);
-		position.y -= static_cast<int>(skipSize.wholeLines);
-	}
-	if (src.begin == src.end)
-		return;
-
-	if (position.y + 1 == dstHeight) {
-		// Bottom line - cannot draw south.
-		src.begin = RenderClxOutlineRowClipped</*North=*/true, /*West=*/true, /*South=*/false, /*East=*/true, SkipColorIndexZero>(
-		    out, position, src.begin, src.width, clipX, color, skipSize);
-		position.y -= static_cast<int>(skipSize.wholeLines);
-	}
-
-	while (position.y > 0 && src.begin != src.end) {
-		src.begin = RenderClxOutlineRowClipped</*North=*/true, /*West=*/true, /*South=*/true, /*East=*/true, SkipColorIndexZero>(
-		    out, position, src.begin, src.width, clipX, color, skipSize);
-		position.y -= static_cast<int>(skipSize.wholeLines);
-	}
-	if (src.begin == src.end)
-		return;
-
-	if (position.y == 0) {
-		src.begin = RenderClxOutlineRowClipped</*North=*/false, /*West=*/true, /*South=*/true, /*East=*/true, SkipColorIndexZero>(
-		    out, position, src.begin, src.width, clipX, color, skipSize);
-		position.y -= static_cast<int>(skipSize.wholeLines);
-	}
-	if (src.begin == src.end)
-		return;
-
-	if (position.y == -1) {
-		// Special case: the top of the sprite is 1px below the last line, render just the outline above.
-		RenderClxOutlineRowClipped</*North=*/false, /*West=*/false, /*South=*/true, /*East=*/false, SkipColorIndexZero>(
-		    out, position, src.begin, src.width, clipX, color, skipSize);
+	std::fill_n(rowAbove, width, false);
+	if (!solidRun->empty()) {
+		PopulateOutlinePixelsForRow(*solidRun, rowBelow, row, rowAbove, static_cast<uint8_t>(y + 1), result);
 	}
 }
 
 template <bool SkipColorIndexZero>
-void RenderClxOutlineClippedXY(const Surface &out, Point position, RenderSrc src, // NOLINT(readability-function-cognitive-complexity)
-    uint8_t color)
+void UpdateOutlinePixelsCache(ClxSprite sprite)
 {
-	// Skip the bottom clipped lines.
-	const int dstHeight = out.h();
-	SkipSize skipSize = { 0, SkipLinesForRenderBackwardsWithOverrun(position, src, dstHeight) };
-	if (src.begin == src.end)
+	if (OutlinePixelsCache.spriteData == sprite.pixelData()
+	    && OutlinePixelsCache.skipColorIndexZero == SkipColorIndexZero) {
 		return;
-
-	ClipX clipX = CalculateClipX(position.x, src.width, out);
-	if (clipX.width < 0)
-		return;
-	if (clipX.left > 0) {
-		--clipX.left, ++clipX.width;
-	} else if (clipX.right > 0) {
-		--clipX.right, ++clipX.width;
 	}
-	position.x += static_cast<int>(clipX.left);
-
-	if (position.y == dstHeight) {
-		// After-bottom line - can only draw north.
-		if (position.x <= 0) {
-			src.begin = RenderClxOutlineRowClipped</*North=*/true, /*West=*/false, /*South=*/false, /*East=*/false, SkipColorIndexZero,
-			    /*ClipWidth=*/true, /*CheckFirstColumn=*/true, /*CheckLastColumn=*/false>(out, position, src.begin, src.width, clipX, color, skipSize);
-		} else if (position.x + clipX.width >= out.w()) {
-			src.begin = RenderClxOutlineRowClipped</*North=*/true, /*West=*/false, /*South=*/false, /*East=*/false, SkipColorIndexZero,
-			    /*ClipWidth=*/true, /*CheckFirstColumn=*/false, /*CheckLastColumn=*/true>(out, position, src.begin, src.width, clipX, color, skipSize);
-		} else {
-			src.begin = RenderClxOutlineRowClipped</*North=*/true, /*West=*/false, /*South=*/false, /*East=*/false, SkipColorIndexZero,
-			    /*ClipWidth=*/true>(out, position, src.begin, src.width, clipX, color, skipSize);
-		}
-		position.y -= static_cast<int>(skipSize.wholeLines);
-	}
-	if (src.begin == src.end)
-		return;
-
-	if (position.y + 1 == dstHeight) {
-		// Bottom line - cannot draw south.
-		if (position.x <= 0) {
-			src.begin = RenderClxOutlineRowClipped</*North=*/true, /*West=*/true, /*South=*/false, /*East=*/true, SkipColorIndexZero,
-			    /*ClipWidth=*/true, /*CheckFirstColumn=*/true, /*CheckLastColumn=*/false>(
-			    out, position, src.begin, src.width, clipX, color, skipSize);
-		} else if (position.x + clipX.width >= out.w()) {
-			src.begin = RenderClxOutlineRowClipped</*North=*/true, /*West=*/true, /*South=*/false, /*East=*/true, SkipColorIndexZero,
-			    /*ClipWidth=*/true, /*CheckFirstColumn=*/false, /*CheckLastColumn=*/true>(
-			    out, position, src.begin, src.width, clipX, color, skipSize);
-		} else {
-			src.begin = RenderClxOutlineRowClipped</*North=*/true, /*West=*/true, /*South=*/false, /*East=*/true, SkipColorIndexZero,
-			    /*ClipWidth=*/true>(
-			    out, position, src.begin, src.width, clipX, color, skipSize);
-		}
-		position.y -= static_cast<int>(skipSize.wholeLines);
-	}
-
-	if (position.x <= 0) {
-		while (position.y > 0 && src.begin != src.end) {
-			src.begin = RenderClxOutlineRowClipped</*North=*/true, /*West=*/true, /*South=*/true, /*East=*/true, SkipColorIndexZero,
-			    /*ClipWidth=*/true, /*CheckFirstColumn=*/true, /*CheckLastColumn=*/false>(
-			    out, position, src.begin, src.width, clipX, color, skipSize);
-			position.y -= static_cast<int>(skipSize.wholeLines);
-		}
-	} else if (position.x + clipX.width >= out.w()) {
-		while (position.y > 0 && src.begin != src.end) {
-			src.begin = RenderClxOutlineRowClipped</*North=*/true, /*West=*/true, /*South=*/true, /*East=*/true, SkipColorIndexZero,
-			    /*ClipWidth=*/true, /*CheckFirstColumn=*/false, /*CheckLastColumn=*/true>(
-			    out, position, src.begin, src.width, clipX, color, skipSize);
-			position.y -= static_cast<int>(skipSize.wholeLines);
-		}
-	} else {
-		while (position.y > 0 && src.begin != src.end) {
-			src.begin = RenderClxOutlineRowClipped</*North=*/true, /*West=*/true, /*South=*/true, /*East=*/true, SkipColorIndexZero,
-			    /*ClipWidth=*/true>(
-			    out, position, src.begin, src.width, clipX, color, skipSize);
-			position.y -= static_cast<int>(skipSize.wholeLines);
-		}
-	}
-	if (src.begin == src.end)
-		return;
-
-	if (position.y == 0) {
-		if (position.x <= 0) {
-			src.begin = RenderClxOutlineRowClipped</*North=*/false, /*West=*/true, /*South=*/true, /*East=*/true, SkipColorIndexZero,
-			    /*ClipWidth=*/true, /*CheckFirstColumn=*/true, /*CheckLastColumn=*/false>(
-			    out, position, src.begin, src.width, clipX, color, skipSize);
-		} else if (position.x + clipX.width >= out.w()) {
-			src.begin = RenderClxOutlineRowClipped</*North=*/false, /*West=*/true, /*South=*/true, /*East=*/true, SkipColorIndexZero,
-			    /*ClipWidth=*/true, /*CheckFirstColumn=*/false, /*CheckLastColumn=*/true>(
-			    out, position, src.begin, src.width, clipX, color, skipSize);
-		} else {
-			src.begin = RenderClxOutlineRowClipped</*North=*/false, /*West=*/true, /*South=*/true, /*East=*/true, SkipColorIndexZero,
-			    /*ClipWidth=*/true>(
-			    out, position, src.begin, src.width, clipX, color, skipSize);
-		}
-		position.y -= static_cast<int>(skipSize.wholeLines);
-	}
-	if (src.begin == src.end)
-		return;
-
-	if (position.y == -1) {
-		// Before-top line - can only draw south.
-		if (position.x <= 0) {
-			src.begin = RenderClxOutlineRowClipped</*North=*/false, /*West=*/false, /*South=*/true, /*East=*/false, SkipColorIndexZero,
-			    /*ClipWidth=*/true, /*CheckFirstColumn=*/true, /*CheckLastColumn=*/false>(out, position, src.begin, src.width, clipX, color, skipSize);
-		} else if (position.x + clipX.width >= out.w()) {
-			src.begin = RenderClxOutlineRowClipped</*North=*/false, /*West=*/false, /*South=*/true, /*East=*/false, SkipColorIndexZero,
-			    /*ClipWidth=*/true, /*CheckFirstColumn=*/false, /*CheckLastColumn=*/true>(out, position, src.begin, src.width, clipX, color, skipSize);
-		} else {
-			src.begin = RenderClxOutlineRowClipped</*North=*/false, /*West=*/false, /*South=*/true, /*East=*/false, SkipColorIndexZero,
-			    /*ClipWidth=*/true>(out, position, src.begin, src.width, clipX, color, skipSize);
-		}
-	}
+	OutlinePixelsCache.skipColorIndexZero = SkipColorIndexZero;
+	OutlinePixelsCache.spriteData = sprite.pixelData();
+	OutlinePixelsCache.outlinePixels.clear();
+	GetOutline<SkipColorIndexZero>(sprite, OutlinePixelsCache.outlinePixels);
 }
 
 template <bool SkipColorIndexZero>
-void RenderClxOutline(const Surface &out, Point position, const uint8_t *src, std::size_t srcSize,
-    std::size_t srcWidth, uint8_t color)
+void RenderClxOutline(const Surface &out, Point position, ClxSprite sprite, uint8_t color)
 {
-	RenderSrc srcForBackwards { src, src + srcSize, static_cast<uint_fast16_t>(srcWidth) };
-	if (position.x > 0 && position.x + static_cast<int>(srcWidth) < static_cast<int>(out.w())) {
-		RenderClxOutlineClippedY<SkipColorIndexZero>(out, position, srcForBackwards, color);
+	UpdateOutlinePixelsCache<SkipColorIndexZero>(sprite);
+	--position.x;
+	position.y -= sprite.height();
+	if (position.x >= 0 && position.x + sprite.width() + 2 < out.w()
+	    && position.y >= 0 && position.y + sprite.height() + 2 < out.h()) {
+		for (const auto &[x, y] : OutlinePixelsCache.outlinePixels) {
+			*out.at(position.x + x, position.y + y) = color;
+		}
 	} else {
-		RenderClxOutlineClippedXY<SkipColorIndexZero>(out, position, srcForBackwards, color);
+		for (const auto &[x, y] : OutlinePixelsCache.outlinePixels) {
+			out.SetPixel(Point(position.x + x, position.y + y), color);
+		}
 	}
 }
 
@@ -673,14 +427,14 @@ void ClxApplyTrans(ClxSprite sprite, const uint8_t *trn)
 	while (remaining != 0) {
 		uint8_t val = *dst++;
 		--remaining;
-		if (!IsCl2Opaque(val))
+		if (!IsClxOpaque(val))
 			continue;
-		if (IsCl2OpaqueFill(val)) {
+		if (IsClxOpaqueFill(val)) {
 			--remaining;
 			*dst = trn[*dst];
 			dst++;
 		} else {
-			val = GetCl2OpaquePixelsWidth(val);
+			val = GetClxOpaquePixelsWidth(val);
 			remaining -= val;
 			while (val-- > 0) {
 				*dst = trn[*dst];
@@ -706,6 +460,59 @@ void ClxApplyTrans(ClxSpriteSheet sheet, const uint8_t *trn)
 	}
 }
 
+bool IsPointWithinClx(Point position, ClxSprite clx)
+{
+	const uint8_t *src = clx.pixelData();
+	const uint8_t *end = src + clx.pixelDataSize();
+	const uint16_t width = clx.width();
+
+	int xCur = 0;
+	int yCur = clx.height() - 1;
+	while (src < end) {
+		if (yCur != position.y) {
+			SkipSize skipSize {};
+			skipSize.xOffset = xCur;
+			src = SkipRestOfLineWithOverrun(src, width, skipSize);
+			yCur -= skipSize.wholeLines;
+			xCur = skipSize.xOffset;
+			if (yCur < position.y)
+				return false;
+			continue;
+		}
+
+		while (xCur < width) {
+			uint8_t val = *src++;
+			if (!IsClxOpaque(val)) {
+				// ignore transparent
+				xCur += val;
+				if (xCur > position.x)
+					return false;
+				continue;
+			}
+
+			if (IsClxOpaqueFill(val)) {
+				val = GetClxOpaqueFillWidth(val);
+				uint8_t color = *src++;
+				if (xCur <= position.x && position.x < xCur + val)
+					return color != 0; // ignore shadows
+				xCur += val;
+			} else {
+				val = GetClxOpaquePixelsWidth(val);
+				for (uint8_t pixel = 0; pixel < val; pixel++) {
+					uint8_t color = *src++;
+					if (xCur == position.x)
+						return color != 0; // ignore shadows
+					xCur++;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	return false;
+}
+
 std::pair<int, int> ClxMeasureSolidHorizontalBounds(ClxSprite clx)
 {
 	const uint8_t *src = clx.pixelData();
@@ -718,15 +525,15 @@ std::pair<int, int> ClxMeasureSolidHorizontalBounds(ClxSprite clx)
 	while (src < end) {
 		while (xCur < width) {
 			auto val = *src++;
-			if (!IsCl2Opaque(val)) {
+			if (!IsClxOpaque(val)) {
 				xCur += val;
 				continue;
 			}
-			if (IsCl2OpaqueFill(val)) {
-				val = GetCl2OpaqueFillWidth(val);
+			if (IsClxOpaqueFill(val)) {
+				val = GetClxOpaqueFillWidth(val);
 				++src;
 			} else {
-				val = GetCl2OpaquePixelsWidth(val);
+				val = GetClxOpaquePixelsWidth(val);
 				src += val;
 			}
 			xBegin = std::min(xBegin, xCur);
@@ -752,19 +559,20 @@ std::string ClxDescribe(ClxSprite clx)
 	const uint8_t *src = clx.pixelData();
 	const uint8_t *end = src + clx.pixelDataSize();
 	while (src < end) {
-		BlitCommand cmd = Cl2GetBlitCommand(src);
-		switch (cmd.type) {
-		case BlitType::Transparent:
-			out.append(fmt::format("Transp. | {:>5} | {:>5} |\n", cmd.length, cmd.srcEnd - src));
-			break;
-		case BlitType::Fill:
-			out.append(fmt::format("Fill    | {:>5} | {:>5} | {}\n", cmd.length, cmd.srcEnd - src, cmd.color));
-			break;
-		case BlitType::Pixels:
-			out.append(fmt::format("Pixels  | {:>5} | {:>5} | {}\n", cmd.length, cmd.srcEnd - src, fmt::join(src + 1, src + 1 + cmd.length, " ")));
-			break;
+		const uint8_t control = *src++;
+		if (IsClxOpaque(control)) {
+			if (IsClxOpaqueFill(control)) {
+				const uint8_t length = GetClxOpaqueFillWidth(control);
+				out.append(fmt::format("Fill    | {:>5} | {:>5} | {}\n", length, 2, src[1]));
+				++src;
+			} else {
+				const uint8_t length = GetClxOpaquePixelsWidth(control);
+				out.append(fmt::format("Pixels  | {:>5} | {:>5} | {}\n", length, length + 1, fmt::join(src + 1, src + 1 + length, " ")));
+				src += length;
+			}
+		} else {
+			out.append(fmt::format("Transp. | {:>5} | {:>5} |\n", control, 1));
 		}
-		src = cmd.srcEnd;
 	}
 	return out;
 }
@@ -780,19 +588,39 @@ void ClxDrawTRN(const Surface &out, Point position, ClxSprite clx, const uint8_t
 	DoRenderBackwards(out, position, clx.pixelData(), clx.pixelDataSize(), clx.width(), clx.height(), BlitWithMap { trn });
 }
 
+void ClxDrawWithLightmap(const Surface &out, Point position, ClxSprite clx, const Lightmap &lightmap)
+{
+	DoRenderBackwards(out, position, clx.pixelData(), clx.pixelDataSize(), clx.width(), clx.height(), BlitWithLightmap { lightmap });
+}
+
+void ClxDrawBlended(const Surface &out, Point position, ClxSprite clx)
+{
+	DoRenderBackwards(out, position, clx.pixelData(), clx.pixelDataSize(), clx.width(), clx.height(), BlitBlended {});
+}
+
 void ClxDrawBlendedTRN(const Surface &out, Point position, ClxSprite clx, const uint8_t *trn)
 {
 	DoRenderBackwards(out, position, clx.pixelData(), clx.pixelDataSize(), clx.width(), clx.height(), BlitBlendedWithMap { trn });
 }
 
+void ClxDrawBlendedWithLightmap(const Surface &out, Point position, ClxSprite clx, const Lightmap &lightmap)
+{
+	DoRenderBackwards(out, position, clx.pixelData(), clx.pixelDataSize(), clx.width(), clx.height(), BlitBlendedWithLightmap { lightmap });
+}
+
 void ClxDrawOutline(const Surface &out, uint8_t col, Point position, ClxSprite clx)
 {
-	RenderClxOutline</*SkipColorIndexZero=*/false>(out, position, clx.pixelData(), clx.pixelDataSize(), clx.width(), col);
+	RenderClxOutline</*SkipColorIndexZero=*/false>(out, position, clx, col);
 }
 
 void ClxDrawOutlineSkipColorZero(const Surface &out, uint8_t col, Point position, ClxSprite clx)
 {
-	RenderClxOutline</*SkipColorIndexZero=*/true>(out, position, clx.pixelData(), clx.pixelDataSize(), clx.width(), col);
+	RenderClxOutline</*SkipColorIndexZero=*/true>(out, position, clx, col);
+}
+
+void ClearClxDrawCache()
+{
+	OutlinePixelsCache.spriteData = nullptr;
 }
 
 } // namespace devilution

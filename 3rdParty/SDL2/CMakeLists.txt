@@ -12,10 +12,10 @@ else()
 endif()
 set(SDL_TEST_ENABLED_BY_DEFAULT OFF)
 
-include(functions/FetchContent_MakeAvailableExcludeFromAll)
+include(functions/FetchContent_ExcludeFromAll_backport)
 include(FetchContent)
 FetchContent_Declare(SDL2
-    URL https://github.com/libsdl-org/SDL/archive/5d1e6b28d9c97e5223281c0f0189f6c99a564b70.tar.gz
-    URL_HASH MD5=44c74cf0a55cccba738c5c4271bd23cd
+    URL https://github.com/libsdl-org/SDL/releases/download/release-2.32.4/SDL2-2.32.4.tar.gz
+    URL_HASH SHA256=f15b478253e1ff6dac62257ded225ff4e7d0c5230204ac3450f1144ee806f934
 )
-FetchContent_MakeAvailableExcludeFromAll(SDL2)
+FetchContent_MakeAvailable_ExcludeFromAll(SDL2)

@@ -5,6 +5,9 @@
  */
 #pragma once
 
+#include <gtest/gtest.h>
+
+#include "engine/assets.hpp"
 #include "engine/load_file.hpp"
 #include "levels/themes.h"
 #include "multi.h"
@@ -40,15 +43,12 @@ std::unique_ptr<uint16_t[]> DunData;
 
 void LoadExpectedLevelData(const char *fixture)
 {
-	std::string dunPath = "test/fixtures/";
-
-	paths::SetPrefPath(paths::BasePath());
-	paths::SetAssetsPath(paths::BasePath() + "/" + dunPath);
-
-	dunPath.append(fixture);
-	DunData = LoadFileInMem<uint16_t>(dunPath.c_str());
-	ASSERT_NE(DunData, nullptr) << "Unable to load test fixture " << dunPath;
-	ASSERT_EQ(Size(DMAXX, DMAXY), Size(SDL_SwapLE16(DunData[0]), SDL_SwapLE16(DunData[1])));
+	// Set look up path to the location to load set pieces from later:
+	paths::SetPrefPath(paths::BasePath() + "test/fixtures/");
+	LoadModArchives({});
+	DunData = LoadFileInMem<uint16_t>(fixture);
+	ASSERT_NE(DunData, nullptr) << "Unable to load test fixture " << fixture;
+	ASSERT_EQ(WorldTileSize(DMAXX, DMAXY), GetDunSize(DunData.get()));
 }
 
 void TestInitGame(bool fullQuests = true, bool originalCathedral = true)
@@ -65,6 +65,7 @@ void TestInitGame(bool fullQuests = true, bool originalCathedral = true)
 
 void TestCreateDungeon(int level, uint32_t seed, lvl_entry entry)
 {
+	LevelSeeds[level] = std::nullopt;
 	currlevel = level;
 	leveltype = GetLevelType(level);
 

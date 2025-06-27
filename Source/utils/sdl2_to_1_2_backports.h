@@ -51,6 +51,8 @@
 #define SDLK_LGUI SDLK_LSUPER
 #define SDLK_RGUI SDLK_RSUPER
 
+#define SDL_SCANCODE_GRAVE 53
+
 // Haptic events are not supported in SDL1.
 #define SDL_INIT_HAPTIC 0
 
@@ -89,6 +91,7 @@ void SDL_LogInfo(int category, const char *fmt, ...) DVL_PRINTF_ATTRIBUTE(2, 3);
 void SDL_LogWarn(int category, const char *fmt, ...) DVL_PRINTF_ATTRIBUTE(2, 3);
 void SDL_LogError(int category, const char *fmt, ...) DVL_PRINTF_ATTRIBUTE(2, 3);
 void SDL_LogCritical(int category, const char *fmt, ...) DVL_PRINTF_ATTRIBUTE(2, 3);
+void SDL_LogMessage(int category, SDL_LogPriority priority, const char *fmt, ...) DVL_PRINTF_ATTRIBUTE(3, 4);
 void SDL_LogMessageV(int category, SDL_LogPriority priority, const char *fmt, va_list ap) DVL_PRINTF_ATTRIBUTE(3, 0);
 
 void SDL_LogSetAllPriority(SDL_LogPriority priority);
@@ -319,5 +322,5 @@ int SDL_BlitScaled(SDL_Surface *src, SDL_Rect *srcrect,
 
 Sint64 SDL_RWsize(SDL_RWops *context);
 
-char *SDL_GetBasePath();
-char *SDL_GetPrefPath(const char *org, const char *app);
+extern "C" char *SDL_GetBasePath();
+extern "C" char *SDL_GetPrefPath(const char *org, const char *app);

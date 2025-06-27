@@ -1,7 +1,7 @@
 /**
  * @file msg.h
  *
- * Interface of function for sending and reciving network messages.
+ * Interface of function for sending and receiving network messages.
  */
 #pragma once
 
@@ -63,15 +63,10 @@ enum _cmd_id : uint8_t {
 	//
 	// body (TCmdPItem)
 	CMD_PUTITEM,
-	// Spawn item on ground (place quest items).
-	//
+	// Spawn item on ground (place quest items, drop dead player item, or drop
+	// attempted loot item when inventory is full).
 	// body (TCmdPItem)
 	CMD_SPAWNITEM,
-	// Respawn item on ground (drop dead player item, or drop attempted loot item
-	// when inventory is full).
-	//
-	// body (TCmdPItem)
-	CMD_RESPAWNITEM,
 	// Attack target location.
 	//
 	// body (TCmdLoc)
@@ -178,10 +173,12 @@ enum _cmd_id : uint8_t {
 	//
 	// body (TCmd)
 	CMD_CHEAT_EXPERIENCE,
-	// Cheat: increase active spell level of player.
+	// Change spell level of player.
 	//
-	// body (TCmd)
-	CMD_CHEAT_SPELL_LEVEL,
+	// body (TCmdParam2)
+	//    int16_t spellID
+	//    int16_t spellLevel
+	CMD_CHANGE_SPELL_LEVEL,
 	// Debug command (nop).
 	//
 	// body (TCmd)
@@ -392,21 +389,14 @@ enum _cmd_id : uint8_t {
 	//
 	// body (TCmdPItem)
 	CMD_SYNCPUTITEM,
-	// Golem death at location.
-	//
-	// body (TCmdLocParam1):
-	//    int8_t x
-	//    int8_t y
-	//    int16_t dlvl
-	CMD_KILLGOLEM,
 	// Synchronize quest state.
 	//
 	// body (TCmdQuest)
 	CMD_SYNCQUEST,
-	// Spawn golem at target location.
+	// Request to spawn a golem at target location.
 	//
-	// body (TCmdGolem)
-	CMD_AWAKEGOLEM,
+	// body (TCmdLocParam1)
+	CMD_REQUESTSPAWNGOLEM,
 	// Enable mana shield of player (render).
 	//
 	// body (TCmd)
@@ -419,6 +409,10 @@ enum _cmd_id : uint8_t {
 	CMD_NAKRUL,
 	CMD_OPENHIVE,
 	CMD_OPENGRAVE,
+	// Spawn a monster at target location.
+	//
+	// body (TCmdSpawnMonster)
+	CMD_SPAWNMONSTER,
 	// Fake command; set current player for succeeding mega pkt buffer messages.
 	//
 	// body (TFakeCmdPlr)
@@ -498,23 +492,24 @@ struct TCmdParam2 {
 	uint16_t wParam2;
 };
 
-struct TCmdParam5 {
+struct TCmdParam4 {
 	_cmd_id bCmd;
 	uint16_t wParam1;
 	uint16_t wParam2;
 	uint16_t wParam3;
 	uint16_t wParam4;
-	uint16_t wParam5;
 };
 
-struct TCmdGolem {
+struct TCmdSpawnMonster {
 	_cmd_id bCmd;
-	uint8_t _mx;
-	uint8_t _my;
-	Direction _mdir;
-	int8_t _menemy;
-	int32_t _mhitpoints;
-	uint8_t _currlevel;
+	uint8_t x;
+	uint8_t y;
+	Direction dir;
+	uint16_t typeIndex;
+	uint16_t monsterId;
+	uint32_t seed;
+	uint8_t golemOwnerPlayerId;
+	uint8_t golemSpellLevel;
 };
 
 struct TCmdQuest {
@@ -530,13 +525,13 @@ struct TCmdQuest {
 struct TItemDef {
 	_item_indexes wIndx;
 	uint16_t wCI;
-	int32_t dwSeed;
+	uint32_t dwSeed;
 };
 
 struct TItem {
 	_item_indexes wIndx;
 	uint16_t wCI;
-	int32_t dwSeed;
+	uint32_t dwSeed;
 	uint8_t bId;
 	uint8_t bDur;
 	uint8_t bMDur;
@@ -546,16 +541,12 @@ struct TItem {
 	uint32_t dwBuff;
 	uint16_t wToHit;
 	uint16_t wMaxDam;
-	uint8_t bMinStr;
-	uint8_t bMinMag;
-	uint8_t bMinDex;
-	int16_t bAC;
 };
 
 struct TEar {
 	_item_indexes wIndx;
 	uint16_t wCI;
-	int32_t dwSeed;
+	uint32_t dwSeed;
 	uint8_t bCursval;
 	char heroname[17];
 };
@@ -614,6 +605,7 @@ struct TCmdPItem {
 struct TCmdChItem {
 	_cmd_id bCmd;
 	uint8_t bLoc;
+	bool forceSpell;
 
 	union {
 		TItemDef def;
@@ -714,22 +706,20 @@ struct TPktHdr {
 
 struct TPkt {
 	TPktHdr hdr;
-	byte body[493];
+	std::byte body[493];
 };
 #pragma pack(pop)
-
-struct TBuffer {
-	uint32_t dwNextWriteOffset;
-	byte bData[4096];
-};
 
 extern uint8_t gbBufferMsgs;
 extern int dwRecCount;
 
-void msg_send_drop_pkt(int pnum, int reason);
+void PrepareItemForNetwork(const Item &item, TItem &messageItem);
+void PrepareEarForNetwork(const Item &item, TEar &ear);
+void RecreateItem(const Player &player, const TItem &messageItem, Item &item);
+void msg_send_drop_pkt(uint8_t pnum, int reason);
 bool msg_wait_resync();
 void run_delta_info();
-void DeltaExportData(int pnum);
+void DeltaExportData(uint8_t pnum);
 void DeltaSyncJunk();
 void delta_init();
 void DeltaClearLevel(uint8_t level);
@@ -745,28 +735,28 @@ void DeltaLoadLevel();
 /** @brief Clears last sent player command for the local player. This is used when a game tick changes. */
 void ClearLastSentPlayerCmd();
 void NetSendCmd(bool bHiPri, _cmd_id bCmd);
-void NetSendCmdGolem(uint8_t mx, uint8_t my, Direction dir, uint8_t menemy, int hp, uint8_t cl);
-void NetSendCmdLoc(size_t playerId, bool bHiPri, _cmd_id bCmd, Point position);
+void NetSendCmdSpawnMonster(Point position, Direction dir, uint16_t typeIndex, uint16_t monsterId, uint32_t seed, uint8_t golemOwnerPlayerId, uint8_t golemSpellLevel);
+void NetSendCmdLoc(uint8_t playerId, bool bHiPri, _cmd_id bCmd, Point position);
 void NetSendCmdLocParam1(bool bHiPri, _cmd_id bCmd, Point position, uint16_t wParam1);
 void NetSendCmdLocParam2(bool bHiPri, _cmd_id bCmd, Point position, uint16_t wParam1, uint16_t wParam2);
 void NetSendCmdLocParam3(bool bHiPri, _cmd_id bCmd, Point position, uint16_t wParam1, uint16_t wParam2, uint16_t wParam3);
 void NetSendCmdLocParam4(bool bHiPri, _cmd_id bCmd, Point position, uint16_t wParam1, uint16_t wParam2, uint16_t wParam3, uint16_t wParam4);
-void NetSendCmdLocParam5(bool bHiPri, _cmd_id bCmd, Point position, uint16_t wParam1, uint16_t wParam2, uint16_t wParam3, uint16_t wParam4, uint16_t wParam5);
 void NetSendCmdParam1(bool bHiPri, _cmd_id bCmd, uint16_t wParam1);
 void NetSendCmdParam2(bool bHiPri, _cmd_id bCmd, uint16_t wParam1, uint16_t wParam2);
-void NetSendCmdParam5(bool bHiPri, _cmd_id bCmd, uint16_t wParam1, uint16_t wParam2, uint16_t wParam3, uint16_t wParam4, uint16_t wParam5);
+void NetSendCmdParam4(bool bHiPri, _cmd_id bCmd, uint16_t wParam1, uint16_t wParam2, uint16_t wParam3, uint16_t wParam4);
 void NetSendCmdQuest(bool bHiPri, const Quest &quest);
-void NetSendCmdGItem(bool bHiPri, _cmd_id bCmd, uint8_t pnum, uint8_t ii);
+void NetSendCmdGItem(bool bHiPri, _cmd_id bCmd, const Player &player, uint8_t ii);
 void NetSendCmdPItem(bool bHiPri, _cmd_id bCmd, Point position, const Item &item);
 void NetSyncInvItem(const Player &player, int invListIndex);
-void NetSendCmdChItem(bool bHiPri, uint8_t bLoc);
+void NetSendCmdChItem(bool bHiPri, uint8_t bLoc, bool forceSpellChange = false);
 void NetSendCmdDelItem(bool bHiPri, uint8_t bLoc);
 void NetSendCmdChInvItem(bool bHiPri, int invGridIndex);
-void NetSendCmdChBeltItem(bool bHiPri, int invGridIndex);
-void NetSendCmdDamage(bool bHiPri, uint8_t bPlr, uint32_t dwDam, DamageType damageType);
+void NetSendCmdChBeltItem(bool bHiPri, int beltIndex);
+void NetSendCmdDamage(bool bHiPri, const Player &player, uint32_t dwDam, DamageType damageType);
 void NetSendCmdMonDmg(bool bHiPri, uint16_t wMon, uint32_t dwDam);
 void NetSendCmdString(uint32_t pmask, const char *pszStr);
-void delta_close_portal(int pnum);
-size_t ParseCmd(size_t pnum, const TCmd *pCmd);
+void delta_close_portal(const Player &player);
+bool ValidateCmdSize(size_t requiredCmdSize, size_t maxCmdSize, size_t playerId);
+size_t ParseCmd(uint8_t pnum, const TCmd *pCmd, size_t maxCmdSize);
 
 } // namespace devilution

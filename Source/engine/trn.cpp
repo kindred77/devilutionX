@@ -1,11 +1,13 @@
+#include "engine/trn.hpp"
+
+#include <cstdint>
+
 #include <fmt/format.h>
-#include <unordered_map>
 
 #ifdef _DEBUG
 #include "debug.h"
 #endif
 #include "engine/load_file.hpp"
-#include "engine/trn.hpp"
 #include "lighting.h"
 
 namespace devilution {
@@ -56,6 +58,18 @@ std::optional<std::array<uint8_t, 256>> GetClassTRN(Player &player)
 		path = debugTRN.c_str();
 	}
 #endif
+	if (LoadOptionalFileInMem(path, &trn[0], 256)) {
+		return trn;
+	}
+	return std::nullopt;
+}
+
+std::optional<std::array<uint8_t, 256>> GetPlayerGraphicTRN(const char *pszName)
+{
+	char path[MaxMpqPathSize];
+	*BufCopy(path, pszName, ".trn") = '\0';
+
+	std::array<uint8_t, 256> trn;
 	if (LoadOptionalFileInMem(path, &trn[0], 256)) {
 		return trn;
 	}

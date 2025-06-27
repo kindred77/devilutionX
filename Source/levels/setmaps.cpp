@@ -1,5 +1,7 @@
 #include "levels/setmaps.h"
 
+#include <cstdint>
+
 #ifdef _DEBUG
 #include "debug.h"
 #endif
@@ -115,7 +117,7 @@ void LoadSetMap()
 		LoadPreL1Dungeon("levels\\l1data\\sklkng1.dun");
 		LoadL1Dungeon("levels\\l1data\\sklkng2.dun", { 83, 44 });
 		SetMapTransparency("levels\\l1data\\sklkngt.dun");
-		LoadPalette("levels\\l1data\\l1_2.pal");
+		LoadPaletteAndInitBlending("levels\\l1data\\l1_2.pal");
 		AddSKingObjs();
 		InitSKingTriggers();
 		break;
@@ -123,7 +125,7 @@ void LoadSetMap()
 		LoadPreL2Dungeon("levels\\l2data\\bonecha2.dun");
 		LoadL2Dungeon("levels\\l2data\\bonecha1.dun", { 70, 40 });
 		SetMapTransparency("levels\\l2data\\bonechat.dun");
-		LoadPalette("levels\\l2data\\l2_2.pal");
+		LoadPaletteAndInitBlending("levels\\l2data\\l2_2.pal");
 		AddSChamObjs();
 		InitSChambTriggers();
 		break;
@@ -133,7 +135,7 @@ void LoadSetMap()
 		if (Quests[Q_PWATER]._qactive == QUEST_INIT)
 			Quests[Q_PWATER]._qactive = QUEST_ACTIVE;
 		LoadL3Dungeon("levels\\l3data\\foulwatr.dun", { 31, 83 });
-		LoadPalette("levels\\l3data\\l3pfoul.pal");
+		LoadPaletteAndInitBlending("levels\\l3data\\l3pfoul.pal");
 		InitPWaterTriggers();
 		break;
 	case SL_VILEBETRAYER:
@@ -145,18 +147,18 @@ void LoadSetMap()
 		LoadPreL1Dungeon("levels\\l1data\\vile1.dun");
 		LoadL1Dungeon("levels\\l1data\\vile2.dun", { 35, 36 });
 		SetMapTransparency("levels\\l1data\\vile1.dun");
-		LoadPalette("levels\\l1data\\l1_2.pal");
+		LoadPaletteAndInitBlending("levels\\l1data\\l1_2.pal");
 		AddVileObjs();
 		InitNoTriggers();
 		break;
 	case SL_ARENA_CHURCH:
-		LoadArenaMap("arena\\church.dun", { 37, 22 }, { 36, 20 });
+		LoadArenaMap("arena\\church.dun", { 29, 22 }, { 28, 20 });
 		break;
 	case SL_ARENA_HELL:
-		LoadArenaMap("arena\\hell.dun", { 44, 32 }, { 43, 32 });
+		LoadArenaMap("arena\\hell.dun", { 34, 26 }, { 33, 26 });
 		break;
 	case SL_ARENA_CIRCLE_OF_LIFE:
-		LoadArenaMap("arena\\circle_of_death.dun", { 48, 34 }, { 47, 34 });
+		LoadArenaMap("arena\\circle_of_death.dun", { 30, 26 }, { 29, 26 });
 		break;
 	case SL_NONE:
 #ifdef _DEBUG

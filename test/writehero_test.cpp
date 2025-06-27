@@ -8,9 +8,14 @@
 #include <gtest/gtest.h>
 #include <picosha2.h>
 
+#include "cursor.h"
+#include "engine/assets.hpp"
+#include "game_mode.hpp"
+#include "init.hpp"
 #include "loadsave.h"
 #include "pack.h"
 #include "pfile.h"
+#include "playerdat.hpp"
 #include "utils/file_util.h"
 #include "utils/paths.h"
 
@@ -53,8 +58,6 @@ void SwapLE(PlayerPack &player)
 		SwapLE(item);
 	}
 	player.wReflections = SDL_SwapLE16(player.wReflections);
-	player.wReserved2 = SDL_SwapLE16(player.wReserved2);
-	player.wReserved8 = SDL_SwapLE16(player.wReserved8);
 	player.pDiabloKillLevel = SDL_SwapLE32(player.pDiabloKillLevel);
 	player.pDifficulty = SDL_SwapLE32(player.pDifficulty);
 	player.pDamAcFlags = SDL_SwapLE32(player.pDamAcFlags);
@@ -257,7 +260,7 @@ void PackPlayerTest(PlayerPack *pPack)
 
 void AssertPlayer(Player &player)
 {
-	ASSERT_EQ(Count8(player._pSplLvl, 64), 23);
+	ASSERT_EQ(CountU8(player._pSplLvl, 64), 23);
 	ASSERT_EQ(Count8(player.InvGrid, InventoryGridCells), 9);
 	ASSERT_EQ(CountItems(player.InvBody, NUM_INVLOC), 6);
 	ASSERT_EQ(CountItems(player.InvList, InventoryGridCells), 2);
@@ -280,13 +283,13 @@ void AssertPlayer(Player &player)
 	ASSERT_EQ(player._pDexterity, 281);
 	ASSERT_EQ(player._pBaseVit, 80);
 	ASSERT_EQ(player._pVitality, 90);
-	ASSERT_EQ(player._pLevel, 50);
+	ASSERT_EQ(player.getCharacterLevel(), 50);
 	ASSERT_EQ(player._pStatPts, 0);
 	ASSERT_EQ(player._pExperience, 1583495809);
 	ASSERT_EQ(player._pGold, 0);
 	ASSERT_EQ(player._pMaxHPBase, 12864);
 	ASSERT_EQ(player._pHPBase, 12864);
-	ASSERT_EQ(player._pBaseToBlk, 20);
+	ASSERT_EQ(player.getBaseToBlock(), 20);
 	ASSERT_EQ(player._pMaxManaBase, 11104);
 	ASSERT_EQ(player._pManaBase, 11104);
 	ASSERT_EQ(player._pMemSpells, 66309357295);
@@ -297,13 +300,11 @@ void AssertPlayer(Player &player)
 	ASSERT_EQ(player.pDungMsgs2, 0);
 	ASSERT_EQ(player.pLvlLoad, 0);
 	ASSERT_EQ(player.pDiabloKillLevel, 3);
-	ASSERT_EQ(player.pBattleNet, 0);
 	ASSERT_EQ(player.pManaShield, 0);
-	ASSERT_EQ(player.pDifficulty, 0);
 	ASSERT_EQ(player.pDamAcFlags, ItemSpecialEffectHf::None);
 
 	ASSERT_EQ(player._pmode, 0);
-	ASSERT_EQ(Count8(player.walkpath, MaxPathLength), 25);
+	ASSERT_EQ(Count8(player.walkpath, MaxPathLengthPlayer), MaxPathLengthPlayer);
 	ASSERT_EQ(player._pgfxnum, 36);
 	ASSERT_EQ(player.AnimInfo.ticksPerFrame, 4);
 	ASSERT_EQ(player.AnimInfo.tickCounterOfCurrentFrame, 1);
@@ -327,7 +328,7 @@ void AssertPlayer(Player &player)
 	ASSERT_EQ(player._pMaxHP, 16640);
 	ASSERT_EQ(player._pMana, 14624);
 	ASSERT_EQ(player._pMaxMana, 14624);
-	ASSERT_EQ(player._pNextExper, 1310707109);
+	ASSERT_EQ(player.getNextExperienceThreshold(), 1583495809);
 	ASSERT_EQ(player._pMagResist, 75);
 	ASSERT_EQ(player._pFireResist, 16);
 	ASSERT_EQ(player._pLghtResist, 75);
@@ -353,7 +354,6 @@ void AssertPlayer(Player &player)
 	ASSERT_EQ(player._pIFlags, ItemSpecialEffect::None);
 	ASSERT_EQ(player._pIGetHit, 0);
 	ASSERT_EQ(player._pISplLvlAdd, 0);
-	ASSERT_EQ(player._pISplDur, 0);
 	ASSERT_EQ(player._pIEnAc, 0);
 	ASSERT_EQ(player._pIFMinDam, 0);
 	ASSERT_EQ(player._pIFMaxDam, 0);
@@ -364,11 +364,20 @@ void AssertPlayer(Player &player)
 
 TEST(Writehero, pfile_write_hero)
 {
-	paths::SetPrefPath(".");
-	std::remove("multi_0.sv");
+	LoadCoreArchives();
+	LoadGameArchives();
+
+	// The tests need spawn.mpq or diabdat.mpq
+	// Please provide them so that the tests can run successfully
+	ASSERT_TRUE(HaveMainData());
+
+	const std::string savePath = paths::BasePath() + "multi_0.sv";
+	paths::SetPrefPath(paths::BasePath());
+	RemoveFile(savePath.c_str());
 
 	gbVanilla = true;
 	gbIsHellfire = false;
+	gbIsSpawn = false;
 	gbIsMultiplayer = true;
 	gbIsHellfireSaveGame = false;
 	leveltype = DTYPE_TOWN;
@@ -377,22 +386,24 @@ TEST(Writehero, pfile_write_hero)
 	Players.resize(1);
 	MyPlayerId = 0;
 	MyPlayer = &Players[MyPlayerId];
-	*MyPlayer = {};
 
+	LoadSpellData();
+	LoadPlayerDataFiles();
+	LoadMonsterData();
+	LoadItemData();
 	_uiheroinfo info {};
-	strcpy(info.name, "TestPlayer");
 	info.heroclass = HeroClass::Rogue;
 	pfile_ui_save_create(&info);
 	PlayerPack pks;
 	PackPlayerTest(&pks);
-	UnPackPlayer(&pks, *MyPlayer, true);
+	UnPackPlayer(pks, *MyPlayer);
 	AssertPlayer(Players[0]);
 	pfile_write_hero();
 
-	const char *path = "multi_0.sv";
-	uintmax_t size;
-	ASSERT_TRUE(GetFileSize(path, &size));
-	FILE *f = std::fopen(path, "rb");
+	uintmax_t fileSize;
+	ASSERT_TRUE(GetFileSize(savePath.c_str(), &fileSize));
+	size_t size = static_cast<size_t>(fileSize);
+	FILE *f = OpenFile(savePath.c_str(), "rb");
 	ASSERT_TRUE(f != nullptr);
 	std::unique_ptr<char[]> data { new char[size] };
 	ASSERT_EQ(std::fread(data.get(), size, 1, f), 1);

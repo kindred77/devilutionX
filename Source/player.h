@@ -10,34 +10,37 @@
 
 #include <algorithm>
 #include <array>
+#include <string_view>
 
 #include "diablo.h"
-#include "engine.h"
 #include "engine/actor_position.hpp"
 #include "engine/animationinfo.h"
 #include "engine/clx_sprite.hpp"
+#include "engine/displacement.hpp"
 #include "engine/path.h"
 #include "engine/point.hpp"
+#include "game_mode.hpp"
 #include "interfac.h"
 #include "items.h"
+#include "items/validation.h"
+#include "levels/dun_tile.hpp"
 #include "levels/gendung.h"
 #include "multi.h"
+#include "playerdat.hpp"
 #include "spelldat.h"
 #include "utils/attributes.h"
 #include "utils/enum_traits.h"
-#include "utils/stdcompat/algorithm.hpp"
+#include "utils/is_of.hpp"
 
 namespace devilution {
 
 constexpr int InventoryGridCells = 40;
 constexpr int MaxBeltItems = 8;
 constexpr int MaxResistance = 75;
-constexpr int MaxCharacterLevel = 50;
-constexpr int MaxSpellLevel = 15;
+constexpr uint8_t MaxSpellLevel = 15;
 constexpr int PlayerNameLength = 32;
 
 constexpr size_t NumHotkeys = 12;
-constexpr int BaseHitChance = 50;
 
 /** Walking directions */
 enum {
@@ -52,17 +55,6 @@ enum {
 	WALK_W    =  8,
 	WALK_NONE = -1,
 	// clang-format on
-};
-
-enum class HeroClass : uint8_t {
-	Warrior,
-	Rogue,
-	Sorcerer,
-	Monk,
-	Bard,
-	Barbarian,
-
-	LAST = Barbarian
 };
 
 enum class CharacterAttribute : uint8_t {
@@ -168,12 +160,12 @@ enum class DeathReason {
 	MonsterOrTrap,
 	/* @brief Other player or selfkill (for example firewall) */
 	Player,
-	/* @brief HP is zero but we don't know when or where this happend */
+	/* @brief HP is zero but we don't know when or where this happened */
 	Unknown,
 };
 
 /** Maps from armor animation to letter used in graphic files. */
-constexpr std::array<char, 4> ArmourChar = {
+constexpr std::array<char, 3> ArmourChar = {
 	'l', // light
 	'm', // medium
 	'h', // heavy
@@ -197,8 +189,8 @@ constexpr std::array<char, 6> CharChar = {
 	'r', // rogue
 	's', // sorcerer
 	'm', // monk
-	'b',
-	'c',
+	'b', // bard
+	'c', // barbarian
 };
 
 /**
@@ -249,7 +241,6 @@ struct Player {
 	int _pBaseVit;
 	int _pStatPts;
 	int _pDamageMod;
-	int _pBaseToBlk;
 	int _pHPBase;
 	int _pMaxHPBase;
 	int _pHitPoints;
@@ -268,16 +259,14 @@ struct Player {
 	int _pIBonusAC;
 	int _pIBonusDamMod;
 	int _pIGetHit;
-	int _pISplDur;
 	int _pIEnAc;
 	int _pIFMinDam;
 	int _pIFMaxDam;
 	int _pILMinDam;
 	int _pILMaxDam;
 	uint32_t _pExperience;
-	uint32_t _pNextExper;
 	PLR_MODE _pmode;
-	int8_t walkpath[MaxPathLength];
+	int8_t walkpath[MaxPathLengthPlayer];
 	bool plractive;
 	action_id destAction;
 	int destParam1;
@@ -320,8 +309,11 @@ struct Player {
 	ActorPosition position;
 	Direction _pdir; // Direction faced by player (direction enum)
 	HeroClass _pClass;
-	int8_t _pLevel;
-	int8_t _pMaxLvl;
+
+private:
+	uint8_t _pLevel = 1; // Use get/setCharacterLevel to ensure this attribute stays within the accepted range
+
+public:
 	uint8_t _pgfxnum; // Bitmask indicating what variant of the sprite the player is using. The 3 lower bits define weapon (PlayerWeaponGraphic) and the higher bits define armour (starting with PlayerArmorGraphic)
 	int8_t _pISplLvlAdd;
 	/** @brief Specifies whether players are in non-PvP mode. */
@@ -338,7 +330,7 @@ struct Player {
 	SpellID _pRSpell;
 	SpellType _pRSplType;
 	SpellID _pSBkSpell;
-	int8_t _pSplLvl[64];
+	uint8_t _pSplLvl[64];
 	/** @brief Bitmask of staff spell */
 	uint64_t _pISpells;
 	/** @brief Bitmask of learned spells */
@@ -371,22 +363,95 @@ struct Player {
 	uint8_t pTownWarps;
 	uint8_t pDungMsgs;
 	uint8_t pLvlLoad;
-	bool pBattleNet;
 	bool pManaShield;
 	uint8_t pDungMsgs2;
 	bool pOriginalCathedral;
 	uint8_t pDiabloKillLevel;
 	uint16_t wReflections;
-	_difficulty pDifficulty;
 	ItemSpecialEffectHf pDamAcFlags;
+
+	[[nodiscard]] std::string_view name() const
+	{
+		return _pName;
+	}
+
+	/**
+	 * @brief Convenience function to get the base stats/bonuses for this player's class
+	 */
+	[[nodiscard]] const ClassAttributes &getClassAttributes() const
+	{
+		return GetClassAttributes(_pClass);
+	}
+
+	[[nodiscard]] const PlayerCombatData &getPlayerCombatData() const
+	{
+		return GetPlayerCombatDataForClass(_pClass);
+	}
+
+	[[nodiscard]] const PlayerData &getPlayerData() const
+	{
+		return GetPlayerDataForClass(_pClass);
+	}
+
+	/**
+	 * @brief Gets the translated name for the character's class
+	 */
+	[[nodiscard]] std::string_view getClassName() const
+	{
+		return _(getPlayerData().className);
+	}
+
+	[[nodiscard]] int getBaseToBlock() const
+	{
+		return getPlayerCombatData().baseToBlock;
+	}
 
 	void CalcScrolls();
 
-	bool CanUseItem(const Item &item) const
+	bool CanUseItem(const Item &item) const;
+
+	bool CanCleave()
 	{
-		return _pStrength >= item._iMinStr
-		    && _pMagic >= item._iMinMag
-		    && _pDexterity >= item._iMinDex;
+		switch (_pClass) {
+		case HeroClass::Warrior:
+		case HeroClass::Rogue:
+		case HeroClass::Sorcerer:
+			return false;
+		case HeroClass::Monk:
+			return isEquipped(ItemType::Staff);
+		case HeroClass::Bard:
+			return InvBody[INVLOC_HAND_LEFT]._itype == ItemType::Sword && InvBody[INVLOC_HAND_RIGHT]._itype == ItemType::Sword;
+		case HeroClass::Barbarian:
+			return isEquipped(ItemType::Axe) || (!isEquipped(ItemType::Shield) && (isEquipped(ItemType::Mace, true) || isEquipped(ItemType::Sword, true)));
+		default:
+			return false;
+		}
+	}
+
+	bool isEquipped(ItemType itemType, bool isTwoHanded = false)
+	{
+		switch (itemType) {
+		case ItemType::Sword:
+		case ItemType::Axe:
+		case ItemType::Bow:
+		case ItemType::Mace:
+		case ItemType::Shield:
+		case ItemType::Staff:
+			return (InvBody[INVLOC_HAND_LEFT]._itype == itemType && (!isTwoHanded || InvBody[INVLOC_HAND_LEFT]._iLoc == ILOC_TWOHAND))
+			    || (InvBody[INVLOC_HAND_RIGHT]._itype == itemType && (!isTwoHanded || InvBody[INVLOC_HAND_LEFT]._iLoc == ILOC_TWOHAND));
+		case ItemType::LightArmor:
+		case ItemType::MediumArmor:
+		case ItemType::HeavyArmor:
+			return InvBody[INVLOC_CHEST]._itype == itemType;
+		case ItemType::Helm:
+			return InvBody[INVLOC_HEAD]._itype == itemType;
+		case ItemType::Ring:
+			return InvBody[INVLOC_RING_LEFT]._itype == itemType || InvBody[INVLOC_RING_RIGHT]._itype == itemType;
+		case ItemType::Amulet:
+			return InvBody[INVLOC_AMULET]._itype == itemType;
+		default:
+			return false;
+		}
 	}
 
 	/**
@@ -399,7 +464,7 @@ struct Player {
 	/**
 	 * @brief Returns the network identifier for this player
 	 */
-	[[nodiscard]] size_t getId() const;
+	[[nodiscard]] uint8_t getId() const;
 
 	void RemoveSpdBarItem(int iv);
 
@@ -460,6 +525,11 @@ struct Player {
 	Point GetTargetPosition() const;
 
 	/**
+	 * @brief Returns the index of the given position in `walkpath`, or -1 if not found.
+	 */
+	int GetPositionPathIndex(Point position);
+
+	/**
 	 * @brief Says a speech line.
 	 * @todo BUGFIX Prevent more than one speech to be played at a time (reject new requests).
 	 */
@@ -510,10 +580,7 @@ struct Player {
 	 */
 	int GetMeleeToHit() const
 	{
-		int hper = _pLevel + _pDexterity / 2 + _pIBonusToHit + BaseHitChance;
-		if (_pClass == HeroClass::Warrior)
-			hper += 20;
-		return hper;
+		return getCharacterLevel() + _pDexterity / 2 + _pIBonusToHit + getPlayerCombatData().baseMeleeToHit;
 	}
 
 	/**
@@ -533,12 +600,7 @@ struct Player {
 	 */
 	int GetRangedToHit() const
 	{
-		int hper = _pLevel + _pDexterity + _pIBonusToHit + BaseHitChance;
-		if (_pClass == HeroClass::Rogue)
-			hper += 20;
-		else if (_pClass == HeroClass::Warrior || _pClass == HeroClass::Bard)
-			hper += 10;
-		return hper;
+		return getCharacterLevel() + _pDexterity + _pIBonusToHit + getPlayerCombatData().baseRangedToHit;
 	}
 
 	int GetRangedPiercingToHit() const
@@ -555,12 +617,7 @@ struct Player {
 	 */
 	int GetMagicToHit() const
 	{
-		int hper = _pMagic + BaseHitChance;
-		if (_pClass == HeroClass::Sorcerer)
-			hper += 20;
-		else if (_pClass == HeroClass::Bard)
-			hper += 10;
-		return hper;
+		return _pMagic + getPlayerCombatData().baseMagicToHit;
 	}
 
 	/**
@@ -569,9 +626,9 @@ struct Player {
 	 */
 	int GetBlockChance(bool useLevel = true) const
 	{
-		int blkper = _pDexterity + _pBaseToBlk;
+		int blkper = _pDexterity + getBaseToBlock();
 		if (useLevel)
-			blkper += _pLevel * 2;
+			blkper += getCharacterLevel() * 2;
 		return blkper;
 	}
 
@@ -593,7 +650,7 @@ struct Player {
 			return 0;
 		}
 
-		return std::max<int8_t>(_pISplLvlAdd + _pSplLvl[static_cast<std::size_t>(spell)], 0);
+		return std::max<int>(_pISplLvlAdd + _pSplLvl[static_cast<std::size_t>(spell)], 0);
 	}
 
 	/**
@@ -637,7 +694,7 @@ struct Player {
 			// Maximum achievable HP is approximately 1200. Diablo uses fixed point integers where the last 6 bits are
 			// fractional values. This means that we will never overflow HP values normally by doing this multiplication
 			// as the max value is representable in 17 bits and the multiplication result will be at most 23 bits
-			_pHPPer = clamp(_pHitPoints * 80 / _pMaxHP, 0, 80); // hp should never be greater than maxHP but just in case
+			_pHPPer = std::clamp(_pHitPoints * 81 / _pMaxHP, 0, 81); // hp should never be greater than maxHP but just in case
 		}
 
 		return _pHPPer;
@@ -648,7 +705,7 @@ struct Player {
 		if (_pMaxMana <= 0) {
 			_pManaPer = 0;
 		} else {
-			_pManaPer = clamp(_pMana * 80 / _pMaxMana, 0, 80);
+			_pManaPer = std::clamp(_pMana * 81 / _pMaxMana, 0, 81);
 		}
 
 		return _pManaPer;
@@ -695,8 +752,9 @@ struct Player {
 	/**
 	 * @brief Sets the readied spell to the spell in the specified equipment slot. Does nothing if the item does not have a valid spell.
 	 * @param bodyLocation - the body location whose item will be checked for the spell.
+	 * @param forceSpell - if true, always change active spell, if false, only when current spell slot is empty
 	 */
-	void ReadySpellFromEquipment(inv_body_loc bodyLocation);
+	void ReadySpellFromEquipment(inv_body_loc bodyLocation, bool forceSpell);
 
 	/**
 	 * @brief Does the player currently have a ranged weapon equipped?
@@ -727,6 +785,18 @@ struct Player {
 
 	void getAnimationFramesAndTicksPerFrame(player_graphic graphics, int8_t &numberOfFrames, int8_t &ticksPerFrame) const;
 
+	[[nodiscard]] ClxSprite currentSprite() const
+	{
+		return previewCelSprite ? *previewCelSprite : AnimInfo.currentSprite();
+	}
+	[[nodiscard]] Displacement getRenderingOffset(const ClxSprite sprite) const
+	{
+		Displacement offset = { -CalculateSpriteTileCenterX(sprite.width()), 0 };
+		if (isWalking())
+			offset += GetOffsetForWalking(AnimInfo, _pdir);
+		return offset;
+	}
+
 	/**
 	 * @brief Updates previewCelSprite according to new requested command
 	 * @param cmdId What command is requested
@@ -735,6 +805,50 @@ struct Player {
 	 * @param wParam2 Second Parameter
 	 */
 	void UpdatePreviewCelSprite(_cmd_id cmdId, Point point, uint16_t wParam1, uint16_t wParam2);
+
+	[[nodiscard]] uint8_t getCharacterLevel() const
+	{
+		return _pLevel;
+	}
+
+	/**
+	 * @brief Sets the character level to the target level or nearest valid value.
+	 * @param level New character level, will be clamped to the allowed range
+	 */
+	void setCharacterLevel(uint8_t level);
+
+	[[nodiscard]] uint8_t getMaxCharacterLevel() const;
+
+	[[nodiscard]] bool isMaxCharacterLevel() const
+	{
+		return getCharacterLevel() >= getMaxCharacterLevel();
+	}
+
+private:
+	void _addExperience(uint32_t experience, int levelDelta);
+
+public:
+	/**
+	 * @brief Adds experience to the local player based on the current game mode
+	 * @param experience base value to add, this will be adjusted to prevent power leveling in multiplayer games
+	 */
+	void addExperience(uint32_t experience)
+	{
+		_addExperience(experience, 0);
+	}
+
+	/**
+	 * @brief Adds experience to the local player based on the difference between the monster level
+	 * and current level, then also applying the power level cap in multiplayer games.
+	 * @param experience base value to add, will be scaled up/down by the difference between player and monster level
+	 * @param monsterLevel level of the monster that has rewarded this experience
+	 */
+	void addExperience(uint32_t experience, int monsterLevel)
+	{
+		_addExperience(experience, monsterLevel - getCharacterLevel());
+	}
+
+	[[nodiscard]] uint32_t getNextExperienceThreshold() const;
 
 	/** @brief Checks if the player is on the same level as the local player (MyPlayer). */
 	bool isOnActiveLevel() const
@@ -769,9 +883,34 @@ struct Player {
 		this->plrlevel = static_cast<uint8_t>(level);
 		this->plrIsOnSetLevel = true;
 	}
+
+	/** @brief Returns a character's life based on starting life, character level, and base vitality. */
+	int32_t calculateBaseLife() const;
+
+	/** @brief Returns a character's mana based on starting mana, character level, and base magic. */
+	int32_t calculateBaseMana() const;
+
+	/**
+	 * @brief Sets a tile/dPlayer to be occupied by the player
+	 * @param position tile to update
+	 * @param isMoving specifies whether the player is moving or not (true/moving results in a negative index in dPlayer)
+	 */
+	void occupyTile(Point position, bool isMoving) const;
+
+	/** @brief Checks if the player level is owned by local client. */
+	bool isLevelOwnedByLocalClient() const;
+
+	/** @brief Checks if the player is holding an item of the provided type, and is usable. */
+	bool isHoldingItem(const ItemType type) const
+	{
+		const Item &leftHandItem = InvBody[INVLOC_HAND_LEFT];
+		const Item &rightHandItem = InvBody[INVLOC_HAND_RIGHT];
+
+		return (type == leftHandItem._itype && leftHandItem._iStatFlag) || (type == rightHandItem._itype && rightHandItem._iStatFlag);
+	}
 };
 
-extern DVL_API_FOR_TEST size_t MyPlayerId;
+extern DVL_API_FOR_TEST uint8_t MyPlayerId;
 extern DVL_API_FOR_TEST Player *MyPlayer;
 extern DVL_API_FOR_TEST std::vector<Player> Players;
 /** @brief What Player items and stats should be displayed? Normally this is identical to MyPlayer but can differ when /inspect was used. */
@@ -783,7 +922,7 @@ inline bool IsInspectingPlayer()
 }
 extern bool MyPlayerIsDead;
 
-Player *PlayerAtPosition(Point position);
+Player *PlayerAtPosition(Point position, bool ignoreMovingPlayers = false);
 
 void LoadPlrGFX(Player &player, player_graphic graphic);
 void InitPlayerGFX(Player &player);
@@ -807,8 +946,7 @@ int CalcStatDiff(Player &player);
 #ifdef _DEBUG
 void NextPlrLevel(Player &player);
 #endif
-void AddPlrExperience(Player &player, int lvl, int exp);
-void AddPlrMonstExper(int lvl, int exp, char pmask);
+void AddPlrMonstExper(int lvl, unsigned int exp, char pmask);
 void ApplyPlrDamage(DamageType damageType, Player &player, int dam, int minHP = 0, int frac = 0, DeathReason deathReason = DeathReason::MonsterOrTrap);
 void InitPlayer(Player &player, bool FirstTime);
 void InitMultiView();
@@ -834,7 +972,6 @@ void ProcessPlayers();
 void ClrPlrPath(Player &player);
 bool PosOkPlayer(const Player &player, Point position);
 void MakePlrPath(Player &player, Point targetPosition, bool endspace);
-void CalcPlrStaff(Player &player);
 void CheckPlrSpell(bool isShiftHeld, SpellID spellID = MyPlayer->_pRSpell, SpellType spellType = MyPlayer->_pRSplType);
 void SyncPlrAnim(Player &player);
 void SyncInitPlrPos(Player &player);
@@ -851,12 +988,5 @@ void SetPlrDex(Player &player, int v);
 void SetPlrVit(Player &player, int v);
 void InitDungMsgs(Player &player);
 void PlayDungMsgs();
-
-/* data */
-
-extern const int8_t plrxoff[9];
-extern const int8_t plryoff[9];
-extern const int8_t plrxoff2[9];
-extern const int8_t plryoff2[9];
 
 } // namespace devilution

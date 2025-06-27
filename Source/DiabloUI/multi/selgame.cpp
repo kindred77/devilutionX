@@ -1,5 +1,7 @@
 #include "DiabloUI/multi/selgame.h"
 
+#include <cstdint>
+
 #include <fmt/format.h>
 
 #include "DiabloUI/diabloui.h"
@@ -24,7 +26,7 @@ char selgame_Password[16] = "";
 char selgame_Description[512];
 std::string selgame_Title;
 bool selgame_enteringGame;
-int selgame_selectedGame;
+size_t selgame_selectedGame;
 bool selgame_endMenu;
 int *gdwPlayerId;
 _difficulty nDifficulty;
@@ -44,7 +46,7 @@ std::vector<std::unique_ptr<UiListItem>> vecSelGameDlgItems;
 std::vector<std::unique_ptr<UiItemBase>> vecSelGameDialog;
 std::vector<GameInfo> Gamelist;
 uint32_t firstPublicGameInfoRequestSend = 0;
-unsigned HighlightedItem;
+size_t HighlightedItem;
 
 void selgame_FreeVectors()
 {
@@ -78,7 +80,7 @@ bool IsGameCompatible(const GameData &data)
 static std::string GetErrorMessageIncompatibility(const GameData &data)
 {
 	if (data.programid != GAME_ID) {
-		string_view gameMode;
+		std::string_view gameMode;
 		switch (data.programid) {
 		case GameIdDiabloFull:
 			gameMode = _("Diablo");
@@ -101,7 +103,7 @@ static std::string GetErrorMessageIncompatibility(const GameData &data)
 	}
 }
 
-void UiInitGameSelectionList(string_view search)
+void UiInitGameSelectionList(std::string_view search)
 {
 	selgame_enteringGame = false;
 	selgame_selectedGame = 0;
@@ -113,12 +115,14 @@ void UiInitGameSelectionList(string_view search)
 	}
 
 	if (provider == SELCONN_ZT) {
-		CopyUtf8(selgame_Ip, sgOptions.Network.szPreviousZTGame, sizeof(selgame_Ip));
+		CopyUtf8(selgame_Ip, GetOptions().Network.szPreviousZTGame, sizeof(selgame_Ip));
 	} else {
-		CopyUtf8(selgame_Ip, sgOptions.Network.szPreviousHost, sizeof(selgame_Ip));
+		CopyUtf8(selgame_Ip, GetOptions().Network.szPreviousHost, sizeof(selgame_Ip));
 	}
 
 	selgame_FreeVectors();
+
+	selgame_Label[0] = '\0';
 
 	UiAddBackground(&vecSelGameDialog);
 	UiAddLogo(&vecSelGameDialog);
@@ -147,7 +151,7 @@ void UiInitGameSelectionList(string_view search)
 	vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Join Game"), 2, UiFlags::ColorUiGold));
 
 	if (provider == SELCONN_ZT) {
-		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>("", -1, UiFlags::ElementDisabled));
+		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(std::string_view {}, -1, UiFlags::ElementDisabled));
 		vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("Public Games"), -1, UiFlags::ElementDisabled | UiFlags::ColorWhitegold));
 
 		if (Gamelist.empty()) {
@@ -158,7 +162,7 @@ void UiInitGameSelectionList(string_view search)
 				vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(_("None"), -1, UiFlags::ElementDisabled | UiFlags::ColorUiSilver));
 		} else {
 			for (unsigned i = 0; i < Gamelist.size(); i++) {
-				vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(Gamelist[i].name, i + 3, UiFlags::ColorUiGold));
+				vecSelGameDlgItems.push_back(std::make_unique<UiListItem>(std::string_view(Gamelist[i].name), i + 3, UiFlags::ColorUiGold));
 			}
 		}
 	}
@@ -171,7 +175,7 @@ void UiInitGameSelectionList(string_view search)
 	SDL_Rect rect6 = { (Sint16)(uiPosition.x + 449), (Sint16)(uiPosition.y + 427), 140, 35 };
 	vecSelGameDialog.push_back(std::make_unique<UiArtTextButton>(_("CANCEL"), &UiFocusNavigationEsc, rect6, UiFlags::AlignCenter | UiFlags::VerticalCenter | UiFlags::FontSize30 | UiFlags::ColorUiGold));
 
-	auto selectFn = [](int index) {
+	auto selectFn = [](size_t index) {
 		// UiListItem::m_value could be different from
 		// the index if packet encryption is disabled
 		int itemValue = vecSelGameDlgItems[index]->m_value;
@@ -179,7 +183,7 @@ void UiInitGameSelectionList(string_view search)
 	};
 
 	if (!search.empty()) {
-		for (unsigned i = 0; i < vecSelGameDlgItems.size(); i++) {
+		for (size_t i = 0; i < vecSelGameDlgItems.size(); i++) {
 			int gameIndex = vecSelGameDlgItems[i]->m_value - 3;
 			if (gameIndex < 0)
 				continue;
@@ -202,11 +206,10 @@ void selgame_GameSelection_Init()
 	UiInitGameSelectionList("");
 }
 
-void selgame_GameSelection_Focus(int value)
+void selgame_GameSelection_Focus(size_t value)
 {
-	const auto index = static_cast<unsigned>(value);
-	HighlightedItem = index;
-	const UiListItem &item = *vecSelGameDlgItems[index];
+	HighlightedItem = value;
+	const UiListItem &item = *vecSelGameDlgItems[value];
 	switch (item.m_value) {
 	case 0:
 		CopyUtf8(selgame_Description, _("Create a new game with a difficulty setting of your choice."), sizeof(selgame_Description));
@@ -226,7 +229,7 @@ void selgame_GameSelection_Focus(int value)
 		std::string infoString = std::string(_("Join the public game already in progress."));
 		infoString.append("\n\n");
 		if (IsGameCompatible(gameInfo.gameData)) {
-			string_view difficulty;
+			std::string_view difficulty;
 			switch (gameInfo.gameData.nDifficulty) {
 			case DIFF_NORMAL:
 				difficulty = _("Normal");
@@ -242,24 +245,24 @@ void selgame_GameSelection_Focus(int value)
 			infoString += '\n';
 			switch (gameInfo.gameData.nTickRate) {
 			case 20:
-				AppendStrView(infoString, _("Speed: Normal"));
+				infoString.append(_("Speed: Normal"));
+				break;
+			case 25:
+				infoString.append(_("Speed: Fast"));
 				break;
 			case 30:
-				AppendStrView(infoString, _("Speed: Fast"));
+				infoString.append(_("Speed: Faster"));
 				break;
-			case 40:
-				AppendStrView(infoString, _("Speed: Faster"));
-				break;
-			case 50:
-				AppendStrView(infoString, _("Speed: Fastest"));
+			case 35:
+				infoString.append(_("Speed: Fastest"));
 				break;
 			default:
-				// This should not occure, so no translations is needed
+				// This should not occur, so no translation is needed
 				infoString.append(StrCat("Speed: ", gameInfo.gameData.nTickRate));
 				break;
 			}
 			infoString += '\n';
-			AppendStrView(infoString, _("Players: "));
+			infoString.append(_("Players: "));
 			for (auto &playerName : gameInfo.players) {
 				infoString.append(playerName);
 				infoString += ' ';
@@ -286,7 +289,7 @@ bool UpdateHeroLevel(_uiheroinfo *pInfo)
 	return true;
 }
 
-void selgame_GameSelection_Select(int value)
+void selgame_GameSelection_Select(size_t value)
 {
 	selgame_enteringGame = true;
 	selgame_selectedGame = value;
@@ -380,7 +383,7 @@ void selgame_GameSelection_Esc()
 	selgame_endMenu = true;
 }
 
-void selgame_Diff_Focus(int value)
+void selgame_Diff_Focus(size_t value)
 {
 	switch (vecSelGameDlgItems[value]->m_value) {
 	case DIFF_NORMAL:
@@ -417,10 +420,10 @@ bool IsDifficultyAllowed(int value)
 	return false;
 }
 
-void selgame_Diff_Select(int value)
+void selgame_Diff_Select(size_t value)
 {
 	if (selhero_isMultiPlayer && !IsDifficultyAllowed(vecSelGameDlgItems[value]->m_value)) {
-		selgame_GameSelection_Select(0);
+		selgame_GameSelection_Select(selgame_selectedGame);
 		return;
 	}
 
@@ -506,7 +509,7 @@ void selgame_GameSpeedSelection()
 	UiInitList(selgame_Speed_Focus, selgame_Speed_Select, selgame_Speed_Esc, vecSelGameDialog, true);
 }
 
-void selgame_Speed_Focus(int value)
+void selgame_Speed_Focus(size_t value)
 {
 	switch (vecSelGameDlgItems[value]->m_value) {
 	case 20:
@@ -531,10 +534,10 @@ void selgame_Speed_Focus(int value)
 
 void selgame_Speed_Esc()
 {
-	selgame_GameSelection_Select(0);
+	selgame_GameSelection_Select(selgame_selectedGame);
 }
 
-void selgame_Speed_Select(int value)
+void selgame_Speed_Select(size_t value)
 {
 	nTickRate = vecSelGameDlgItems[value]->m_value;
 
@@ -546,7 +549,7 @@ void selgame_Speed_Select(int value)
 	selgame_Password_Init(0);
 }
 
-void selgame_Password_Init(int /*value*/)
+void selgame_Password_Init(size_t /*value*/)
 {
 	memset(&selgame_Password, 0, sizeof(selgame_Password));
 
@@ -598,7 +601,7 @@ static bool IsGameCompatibleWithErrorMessage(const GameData &data)
 	return false;
 }
 
-void selgame_Password_Select(int /*value*/)
+void selgame_Password_Select(size_t /*value*/)
 {
 	char *gamePassword = nullptr;
 	if (selgame_selectedGame == 0)
@@ -619,9 +622,9 @@ void selgame_Password_Select(int /*value*/)
 			for (unsigned int i = 0; i < (sizeof(selgame_Ip) / sizeof(selgame_Ip[0])); i++) {
 				selgame_Ip[i] = (selgame_Ip[i] >= 'A' && selgame_Ip[i] <= 'Z') ? selgame_Ip[i] + 'a' - 'A' : selgame_Ip[i];
 			}
-			strcpy(sgOptions.Network.szPreviousZTGame, selgame_Ip);
+			strcpy(GetOptions().Network.szPreviousZTGame, selgame_Ip);
 		} else {
-			strcpy(sgOptions.Network.szPreviousHost, selgame_Ip);
+			strcpy(GetOptions().Network.szPreviousHost, selgame_Ip);
 		}
 		if (allowJoin && SNetJoinGame(selgame_Ip, gamePassword, gdwPlayerId)) {
 			if (!IsGameCompatibleWithErrorMessage(*m_game_data)) {
@@ -654,11 +657,13 @@ void selgame_Password_Select(int /*value*/)
 
 	m_game_data->nDifficulty = nDifficulty;
 	m_game_data->nTickRate = nTickRate;
-	m_game_data->bRunInTown = *sgOptions.Gameplay.runInTown ? 1 : 0;
-	m_game_data->bTheoQuest = *sgOptions.Gameplay.theoQuest ? 1 : 0;
-	m_game_data->bCowQuest = *sgOptions.Gameplay.cowQuest ? 1 : 0;
+	m_game_data->bRunInTown = *GetOptions().Gameplay.runInTown ? 1 : 0;
+	m_game_data->bTheoQuest = *GetOptions().Gameplay.theoQuest ? 1 : 0;
+	m_game_data->bCowQuest = *GetOptions().Gameplay.cowQuest ? 1 : 0;
 
-	if (SNetCreateGame(nullptr, gamePassword, (char *)m_game_data, sizeof(*m_game_data), gdwPlayerId)) {
+	GameData gameInitInfo = *m_game_data;
+	gameInitInfo.swapLE();
+	if (SNetCreateGame(nullptr, gamePassword, reinterpret_cast<char *>(&gameInitInfo), sizeof(gameInitInfo), gdwPlayerId)) {
 		UiInitList_clear();
 		selgame_endMenu = true;
 	} else {

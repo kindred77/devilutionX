@@ -4,18 +4,26 @@
 #include "controls/plrctrls.h"
 #include "cursor.h"
 #include "diablo.h"
-#include "engine.h"
+#include "engine/render/primitive_render.hpp"
 #include "engine/render/scrollrt.h"
 #include "gmenu.h"
 #include "inv.h"
 #include "panels/spell_book.hpp"
+#include "panels/spell_list.hpp"
 #include "qol/stash.h"
 #include "stores.h"
+#include "utils/is_of.hpp"
 #include "utils/ui_fwd.h"
 
 namespace devilution {
 
 namespace {
+
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+using SdlEventType = uint16_t;
+#else
+using SdlEventType = uint8_t;
+#endif
 
 VirtualGamepadEventHandler Handler(&VirtualGamepadState);
 
@@ -35,10 +43,10 @@ void SimulateMouseMovement(const SDL_Event &event)
 	bool isInLeftPanel = GetLeftPanel().contains(position);
 	bool isInRightPanel = GetRightPanel().contains(position);
 	if (IsStashOpen) {
-		if (!spselflag && !isInMainPanel && !isInLeftPanel && !isInRightPanel)
+		if (!SpellSelectFlag && !isInMainPanel && !isInLeftPanel && !isInRightPanel)
 			return;
 	} else if (invflag) {
-		if (!spselflag && !isInMainPanel && !isInRightPanel)
+		if (!SpellSelectFlag && !isInMainPanel && !isInRightPanel)
 			return;
 	}
 
@@ -62,7 +70,7 @@ bool HandleGameMenuInteraction(const SDL_Event &event)
 
 bool HandleStoreInteraction(const SDL_Event &event)
 {
-	if (stextflag == TalkID::None)
+	if (!IsPlayerInStore())
 		return false;
 	if (event.type == SDL_FINGERDOWN)
 		CheckStoreBtn();
@@ -71,7 +79,7 @@ bool HandleStoreInteraction(const SDL_Event &event)
 
 void HandleSpellBookInteraction(const SDL_Event &event)
 {
-	if (!sbookflag)
+	if (!SpellbookFlag)
 		return;
 
 	if (event.type == SDL_FINGERUP)
@@ -80,7 +88,7 @@ void HandleSpellBookInteraction(const SDL_Event &event)
 
 bool HandleSpeedBookInteraction(const SDL_Event &event)
 {
-	if (!spselflag)
+	if (!SpellSelectFlag)
 		return false;
 	if (event.type == SDL_FINGERUP)
 		SetSpell();
@@ -92,27 +100,27 @@ void HandleBottomPanelInteraction(const SDL_Event &event)
 	if (!gbRunGame || !MyPlayer->HoldItem.isEmpty())
 		return;
 
-	ClearPanBtn();
+	ResetMainPanelButtons();
 
 	if (event.type != SDL_FINGERUP) {
-		spselflag = true;
-		DoPanBtn();
-		spselflag = false;
+		SpellSelectFlag = true;
+		CheckMainPanelButton();
+		SpellSelectFlag = false;
 	} else {
-		DoPanBtn();
-		if (panbtndown)
-			CheckBtnUp();
+		CheckMainPanelButton();
+		if (MainPanelButtonDown)
+			CheckMainPanelButtonUp();
 	}
 }
 
 void HandleCharacterPanelInteraction(const SDL_Event &event)
 {
-	if (!chrflag)
+	if (!CharFlag)
 		return;
 
 	if (event.type == SDL_FINGERDOWN)
 		CheckChrBtns();
-	else if (event.type == SDL_FINGERUP && chrbtnactive)
+	else if (event.type == SDL_FINGERUP && CharPanelButtonActive)
 		ReleaseChrBtns(false);
 }
 
@@ -126,6 +134,17 @@ void HandleStashPanelInteraction(const SDL_Event &event)
 	} else {
 		CheckStashButtonRelease(MousePosition);
 	}
+}
+
+SdlEventType GetDeactivateEventType()
+{
+	static SdlEventType customEventType = SDL_RegisterEvents(1);
+	return customEventType;
+}
+
+bool IsDeactivateEvent(const SDL_Event &event)
+{
+	return event.type == GetDeactivateEventType();
 }
 
 } // namespace
@@ -159,14 +178,23 @@ void HandleTouchEvent(const SDL_Event &event)
 	HandleStashPanelInteraction(event);
 }
 
+void DeactivateTouchEventHandlers()
+{
+	SDL_Event event;
+	event.type = GetDeactivateEventType();
+	HandleTouchEvent(event);
+}
+
 bool VirtualGamepadEventHandler::Handle(const SDL_Event &event)
 {
-	if (!VirtualGamepadState.isActive || !IsAnyOf(event.type, SDL_FINGERDOWN, SDL_FINGERUP, SDL_FINGERMOTION)) {
-		VirtualGamepadState.primaryActionButton.didStateChange = false;
-		VirtualGamepadState.secondaryActionButton.didStateChange = false;
-		VirtualGamepadState.spellActionButton.didStateChange = false;
-		VirtualGamepadState.cancelButton.didStateChange = false;
-		return false;
+	if (!IsDeactivateEvent(event)) {
+		if (!VirtualGamepadState.isActive || !IsAnyOf(event.type, SDL_FINGERDOWN, SDL_FINGERUP, SDL_FINGERMOTION)) {
+			VirtualGamepadState.primaryActionButton.didStateChange = false;
+			VirtualGamepadState.secondaryActionButton.didStateChange = false;
+			VirtualGamepadState.spellActionButton.didStateChange = false;
+			VirtualGamepadState.cancelButton.didStateChange = false;
+			return false;
+		}
 	}
 
 	if (charMenuButtonEventHandler.Handle(event))
@@ -210,6 +238,11 @@ bool VirtualGamepadEventHandler::Handle(const SDL_Event &event)
 
 bool VirtualDirectionPadEventHandler::Handle(const SDL_Event &event)
 {
+	if (IsDeactivateEvent(event)) {
+		isActive = false;
+		return false;
+	}
+
 	switch (event.type) {
 	case SDL_FINGERDOWN:
 		return HandleFingerDown(event.tfinger);
@@ -269,6 +302,11 @@ bool VirtualDirectionPadEventHandler::HandleFingerMotion(const SDL_TouchFingerEv
 
 bool VirtualButtonEventHandler::Handle(const SDL_Event &event)
 {
+	if (IsDeactivateEvent(event)) {
+		isActive = false;
+		return false;
+	}
+
 	if (!virtualButton->isUsable()) {
 		virtualButton->didStateChange = virtualButton->isHeld;
 		virtualButton->isHeld = false;

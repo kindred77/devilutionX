@@ -12,6 +12,7 @@
 #include "engine/render/clx_render.hpp"
 #include "hwcursor.hpp"
 #include "utils/display.h"
+#include "utils/is_of.hpp"
 #include "utils/language.h"
 
 namespace devilution {
@@ -92,8 +93,6 @@ void ProgressRenderForeground(int progress)
 
 bool UiProgressDialog(int (*fnfunc)())
 {
-	SetFadeLevel(256);
-
 	// Blit the background once and then free it.
 	ProgressLoadBackground();
 

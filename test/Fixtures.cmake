@@ -8,6 +8,7 @@ set(devilutionx_fixtures
   diablo/2-1383137027.dun
   diablo/3-844660068.dun
   diablo/4-609325643.dun
+  diablo/4-902156014.dun
   diablo/5-68685319.dun
   diablo/5-1677631846.dun
   diablo/6-1824554527.dun
@@ -24,6 +25,7 @@ set(devilutionx_fixtures
   diablo/13-428074402.dun
   diablo/13-594689775.dun
   diablo/14-717625719.dun
+  diablo/14-815743776.dun
   diablo/15-1256511996.dun
   diablo/15-1583642716.dun
   diablo/15-1583642716-changed.dun
@@ -79,9 +81,32 @@ set(devilutionx_fixtures
   memory_map/player.txt
   memory_map/portal.txt
   memory_map/quest.txt
+  text_render_integration_test/basic-colors.png
+  text_render_integration_test/basic.png
+  text_render_integration_test/horizontal_overflow.png
+  text_render_integration_test/horizontal_overflow-colors.png
+  text_render_integration_test/kerning_fit_spacing-colors.png
+  text_render_integration_test/kerning_fit_spacing.png
+  text_render_integration_test/kerning_fit_spacing__align_center-colors.png
+  text_render_integration_test/kerning_fit_spacing__align_center.png
+  text_render_integration_test/kerning_fit_spacing__align_center__newlines.png
+  text_render_integration_test/kerning_fit_spacing__align_center__newlines_in_fmt-colors.png
+  text_render_integration_test/kerning_fit_spacing__align_center__newlines_in_value-colors.png
+  text_render_integration_test/kerning_fit_spacing__align_right-colors.png
+  text_render_integration_test/kerning_fit_spacing__align_right.png
+  text_render_integration_test/vertical_overflow.png
+  text_render_integration_test/vertical_overflow-colors.png
   timedemo/WarriorLevel1to2/demo_0.dmo
   timedemo/WarriorLevel1to2/demo_0_reference_spawn_0.sv
   timedemo/WarriorLevel1to2/spawn_0.sv
+  txtdata/cr.tsv
+  txtdata/crlf.tsv
+  txtdata/empty.tsv
+  txtdata/empty_with_utf8_bom.tsv
+  txtdata/lf.tsv
+  txtdata/lf_no_trail.tsv
+  txtdata/sample.tsv
+  txtdata/utf8_bom.tsv
 )
 
 foreach(fixture ${devilutionx_fixtures})

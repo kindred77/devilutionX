@@ -6,8 +6,10 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.text.method.LinkMovementMethod;
@@ -33,6 +35,12 @@ public class DataActivity extends Activity {
 
 		((TextView) findViewById(R.id.full_guide)).setMovementMethod(LinkMovementMethod.getInstance());
 		((TextView) findViewById(R.id.online_guide)).setMovementMethod(LinkMovementMethod.getInstance());
+
+		boolean isTelevision = getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK);
+		if (isTelevision) {
+			findViewById(R.id.gamepad_text).setVisibility(View.VISIBLE);
+			findViewById(R.id.gamepad_icon).setVisibility(View.VISIBLE);
+		}
 	}
 
 	protected void onResume() {
@@ -101,14 +109,14 @@ public class DataActivity extends Activity {
 			return true;
 		}
 
-		if (lang.startsWith("ko") || lang.startsWith("zh") || lang.startsWith("ja")) {
-			File fonts_mpq = fileManager.getFile("/fonts.mpq");
-			if (!fonts_mpq.exists() || fonts_mpq.length() == 53991069 /* v2 */) {
+		File fonts_mpq = fileManager.getFile("/fonts.mpq");
+		if (lang.startsWith("ko") || lang.startsWith("zh") || lang.startsWith("ja") || fonts_mpq.exists()) {
+			if (!fonts_mpq.exists() || DevilutionXSDLActivity.areFontsOutOfDate(fonts_mpq.getAbsolutePath())) {
 				if (!isDownloadingFonts) {
 					fonts_mpq.delete();
 					isDownloadingFonts = true;
 					sendDownloadRequest(
-						"https://github.com/diasurgical/devilutionx-assets/releases/download/v3/fonts.mpq",
+						"https://github.com/diasurgical/devilutionx-assets/releases/download/v4/fonts.mpq",
 						"fonts.mpq",
 						"Extra Game Fonts"
 					);
@@ -151,7 +159,12 @@ public class DataActivity extends Activity {
 
 		if (mReceiver == null) {
 			mReceiver = new DownloadReceiver();
-			registerReceiver(mReceiver, new IntentFilter("android.intent.action.DOWNLOAD_COMPLETE"));
+			IntentFilter filter = new IntentFilter("android.intent.action.DOWNLOAD_COMPLETE");
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+				registerReceiver(mReceiver, filter, Context.RECEIVER_EXPORTED);
+			} else {
+				registerReceiver(mReceiver, filter);
+			}
 		}
 
 		DownloadManager downloadManager = (DownloadManager)this.getSystemService(Context.DOWNLOAD_SERVICE);

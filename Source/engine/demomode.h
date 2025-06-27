@@ -5,6 +5,8 @@
  */
 #pragma once
 
+#include <cstdint>
+
 #include <SDL.h>
 
 namespace devilution {
@@ -26,6 +28,8 @@ void RecordMessage(const SDL_Event &event, uint16_t modState);
 
 void NotifyGameLoopStart();
 void NotifyGameLoopEnd();
+
+uint32_t SimulateMillisecondsSinceStartup();
 #else
 inline void OverrideOptions()
 {
@@ -57,6 +61,10 @@ inline void NotifyGameLoopStart()
 }
 inline void NotifyGameLoopEnd()
 {
+}
+inline uint32_t SimulateMillisecondsSinceStartup()
+{
+	return 0;
 }
 #endif
 

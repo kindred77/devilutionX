@@ -3,11 +3,16 @@
  *
  * Implementation of functionality for syncing game state with other players.
  */
-#include <climits>
+#include <cstdint>
+
+#include <limits>
 
 #include "levels/gendung.h"
+#include "lighting.h"
 #include "monster.h"
+#include "monsters/validation.hpp"
 #include "player.h"
+#include "utils/is_of.hpp"
 
 namespace devilution {
 
@@ -22,8 +27,8 @@ int sgnSyncPInv;
 void SyncOneMonster()
 {
 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
-		int m = ActiveMonsters[i];
-		auto &monster = Monsters[m];
+		const unsigned m = ActiveMonsters[i];
+		Monster &monster = Monsters[m];
 		sgnMonsterPriority[m] = MyPlayer->position.tile.ManhattanDistance(monster.position.tile);
 		if (monster.activeForTicks == 0) {
 			sgnMonsterPriority[m] += 0x1000;
@@ -35,7 +40,7 @@ void SyncOneMonster()
 
 void SyncMonsterPos(TSyncMonster &monsterSync, int ndx)
 {
-	auto &monster = Monsters[ndx];
+	Monster &monster = Monsters[ndx];
 	monsterSync._mndx = ndx;
 	monsterSync._mx = monster.position.tile.x;
 	monsterSync._my = monster.position.tile.y;
@@ -50,35 +55,35 @@ void SyncMonsterPos(TSyncMonster &monsterSync, int ndx)
 
 bool SyncMonsterActive(TSyncMonster &monsterSync)
 {
-	int ndx = -1;
+	unsigned ndx = std::numeric_limits<unsigned>::max();
 	uint32_t lru = 0xFFFFFFFF;
 
 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
-		int m = ActiveMonsters[i];
+		const unsigned m = ActiveMonsters[i];
 		if (sgnMonsterPriority[m] < lru && sgwLRU[m] < 0xFFFE) {
 			lru = sgnMonsterPriority[m];
 			ndx = ActiveMonsters[i];
 		}
 	}
 
-	if (ndx == -1) {
+	if (ndx == std::numeric_limits<unsigned>::max()) {
 		return false;
 	}
 
-	SyncMonsterPos(monsterSync, ndx);
+	SyncMonsterPos(monsterSync, static_cast<int>(ndx));
 	return true;
 }
 
 bool SyncMonsterActive2(TSyncMonster &monsterSync)
 {
-	int ndx = -1;
+	unsigned ndx = std::numeric_limits<unsigned>::max();
 	uint32_t lru = 0xFFFE;
 
 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
 		if (sgnMonsters >= ActiveMonsterCount) {
 			sgnMonsters = 0;
 		}
-		int m = ActiveMonsters[sgnMonsters];
+		const unsigned m = ActiveMonsters[sgnMonsters];
 		if (sgwLRU[m] < lru) {
 			lru = sgwLRU[m];
 			ndx = ActiveMonsters[sgnMonsters];
@@ -86,11 +91,11 @@ bool SyncMonsterActive2(TSyncMonster &monsterSync)
 		sgnMonsters++;
 	}
 
-	if (ndx == -1) {
+	if (ndx == std::numeric_limits<unsigned>::max()) {
 		return false;
 	}
 
-	SyncMonsterPos(monsterSync, ndx);
+	SyncMonsterPos(monsterSync, static_cast<int>(ndx));
 	return true;
 }
 
@@ -150,14 +155,13 @@ void SyncPlrInv(TSyncHeader *pHdr)
 
 void SyncMonster(bool isOwner, const TSyncMonster &monsterSync)
 {
-	const int monsterId = monsterSync._mndx;
-	Monster &monster = Monsters[monsterId];
+	Monster &monster = Monsters[monsterSync._mndx];
 	if (monster.hitPoints <= 0 || monster.mode == MonsterMode::Death) {
 		return;
 	}
 
 	const Point position { monsterSync._mx, monsterSync._my };
-	const int enemyId = monsterSync._menemy;
+	const uint8_t enemyId = monsterSync._menemy;
 
 	if (monster.activeForTicks != 0) {
 		uint32_t delta = MyPlayer->position.tile.ManhattanDistance(monster.position.tile);
@@ -181,54 +185,28 @@ void SyncMonster(bool isOwner, const TSyncMonster &monsterSync)
 			Direction md = GetDirection(monster.position.tile, position);
 			if (DirOK(monster, md)) {
 				M_ClearSquares(monster);
-				dMonster[monster.position.tile.x][monster.position.tile.y] = monsterId + 1;
+				monster.occupyTile(monster.position.tile, false);
 				Walk(monster, md);
-				monster.activeForTicks = UINT8_MAX;
+				monster.activeForTicks = std::numeric_limits<uint8_t>::max();
 			}
 		}
 	} else if (dMonster[position.x][position.y] == 0) {
 		M_ClearSquares(monster);
-		dMonster[position.x][position.y] = monsterId + 1;
+		monster.occupyTile(position, false);
 		monster.position.tile = position;
+		if (monster.lightId != NO_LIGHT)
+			ChangeLightXY(monster.lightId, position);
 		decode_enemy(monster, enemyId);
 		Direction md = GetDirection(position, monster.enemyPosition);
 		M_StartStand(monster, md);
-		monster.activeForTicks = UINT8_MAX;
+		monster.activeForTicks = std::numeric_limits<uint8_t>::max();
 	}
 
 	decode_enemy(monster, enemyId);
-	monster.whoHit |= monsterSync.mWhoHit;
+	monster.whoHit = static_cast<int8_t>(monster.whoHit | monsterSync.mWhoHit);
 }
 
-bool IsEnemyIdValid(const Monster &monster, int enemyId)
-{
-	if (enemyId < 0) {
-		return false;
-	}
-
-	if (enemyId < MAX_PLRS) {
-		return Players[enemyId].plractive;
-	}
-
-	enemyId -= MAX_PLRS;
-	if (static_cast<size_t>(enemyId) >= MaxMonsters) {
-		return false;
-	}
-
-	const Monster &enemy = Monsters[enemyId];
-
-	if (&enemy == &monster) {
-		return false;
-	}
-
-	if (enemy.hitPoints <= 0) {
-		return false;
-	}
-
-	return true;
-}
-
-bool IsTSyncMonsterValidate(const TSyncMonster &monsterSync)
+bool IsTSyncMonsterValid(const TSyncMonster &monsterSync)
 {
 	const size_t monsterId = monsterSync._mndx;
 
@@ -238,15 +216,20 @@ bool IsTSyncMonsterValidate(const TSyncMonster &monsterSync)
 	if (!InDungeonBounds({ monsterSync._mx, monsterSync._my }))
 		return false;
 
-	if (!IsEnemyIdValid(Monsters[monsterId], monsterSync._menemy))
+	if (!IsEnemyIdValid(monsterSync._menemy))
 		return false;
 
 	return true;
 }
 
+bool IsTSyncEnemyValid(const TSyncMonster &monsterSync)
+{
+	return IsEnemyValid(monsterSync._mndx, monsterSync._menemy);
+}
+
 } // namespace
 
-uint32_t sync_all_monsters(byte *pbBuf, uint32_t dwMaxLen)
+size_t sync_all_monsters(std::byte *pbBuf, size_t dwMaxLen)
 {
 	if (ActiveMonsterCount < 1) {
 		return dwMaxLen;
@@ -258,7 +241,7 @@ uint32_t sync_all_monsters(byte *pbBuf, uint32_t dwMaxLen)
 		return dwMaxLen;
 	}
 
-	auto *pHdr = (TSyncHeader *)pbBuf;
+	auto *pHdr = reinterpret_cast<TSyncHeader *>(pbBuf);
 	pbBuf += sizeof(TSyncHeader);
 	dwMaxLen -= sizeof(TSyncHeader);
 
@@ -290,35 +273,40 @@ uint32_t sync_all_monsters(byte *pbBuf, uint32_t dwMaxLen)
 	return dwMaxLen;
 }
 
-uint32_t OnSyncData(const TCmd *pCmd, size_t pnum)
+size_t OnSyncData(const TSyncHeader &header, size_t maxCmdSize, const Player &player)
 {
-	const auto &header = *reinterpret_cast<const TSyncHeader *>(pCmd);
 	const uint16_t wLen = SDL_SwapLE16(header.wLen);
+
+	if (!ValidateCmdSize(wLen + sizeof(header), maxCmdSize, player.getId()))
+		return maxCmdSize;
 
 	assert(gbBufferMsgs != 2);
 
 	if (gbBufferMsgs == 1) {
 		return wLen + sizeof(header);
 	}
-	if (pnum == MyPlayerId) {
+	if (&player == MyPlayer) {
 		return wLen + sizeof(header);
 	}
 
 	assert(header.wLen % sizeof(TSyncMonster) == 0);
-	int monsterCount = wLen / sizeof(TSyncMonster);
+	int monsterCount = static_cast<int>(wLen / sizeof(TSyncMonster));
 
 	uint8_t level = header.bLevel;
 	bool syncLocalLevel = !MyPlayer->_pLvlChanging && GetLevelForMultiplayer(*MyPlayer) == level;
 
 	if (IsValidLevelForMultiplayer(level)) {
-		const auto *monsterSyncs = reinterpret_cast<const TSyncMonster *>(pCmd + sizeof(header));
+		const auto *monsterSyncs = reinterpret_cast<const TSyncMonster *>(&header + 1);
+		bool isOwner = player.getId() > MyPlayerId;
 
 		for (int i = 0; i < monsterCount; i++) {
-			if (!IsTSyncMonsterValidate(monsterSyncs[i]))
+			if (!IsTSyncMonsterValid(monsterSyncs[i]))
 				continue;
 
 			if (syncLocalLevel) {
-				SyncMonster(pnum > MyPlayerId, monsterSyncs[i]);
+				if (!IsTSyncEnemyValid(monsterSyncs[i]))
+					continue;
+				SyncMonster(isOwner, monsterSyncs[i]);
 			}
 
 			delta_sync_monster(monsterSyncs[i], level);
@@ -330,7 +318,7 @@ uint32_t OnSyncData(const TCmd *pCmd, size_t pnum)
 
 void sync_init()
 {
-	sgnMonsters = 16 * MyPlayerId;
+	sgnMonsters = static_cast<size_t>(16 * MyPlayerId);
 	memset(sgwLRU, 255, sizeof(sgwLRU));
 }
 

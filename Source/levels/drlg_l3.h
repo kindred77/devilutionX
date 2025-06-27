@@ -5,6 +5,8 @@
  */
 #pragma once
 
+#include <cstdint>
+
 #include "levels/gendung.h"
 
 namespace devilution {
@@ -12,6 +14,5 @@ namespace devilution {
 void CreateL3Dungeon(uint32_t rseed, lvl_entry entry);
 void LoadPreL3Dungeon(const char *sFileName);
 void LoadL3Dungeon(const char *sFileName, Point spawn);
-;
 
 } // namespace devilution

@@ -1,5 +1,6 @@
 #include "floatingnumbers.h"
 
+#include <cstdint>
 #include <ctime>
 #include <deque>
 #include <fmt/format.h>
@@ -23,7 +24,7 @@ struct FloatingNumber {
 	UiFlags style;
 	DamageType type;
 	int value;
-	int index;
+	size_t index;
 	bool reverseDirection;
 };
 
@@ -90,7 +91,7 @@ void UpdateFloatingData(FloatingNumber &num)
 	}
 }
 
-void AddFloatingNumber(Point pos, Displacement offset, DamageType type, int value, int index, bool damageToPlayer)
+void AddFloatingNumber(Point pos, Displacement offset, DamageType type, int value, size_t index, bool damageToPlayer)
 {
 	// 45 deg angles to avoid jitter caused by px alignment
 	Displacement goodAngles[] = {
@@ -100,9 +101,9 @@ void AddFloatingNumber(Point pos, Displacement offset, DamageType type, int valu
 	};
 
 	Displacement endOffset;
-	if (*sgOptions.Gameplay.enableFloatingNumbers == FloatingNumbers::Random) {
+	if (*GetOptions().Gameplay.enableFloatingNumbers == FloatingNumbers::Random) {
 		endOffset = goodAngles[rand() % 3];
-	} else if (*sgOptions.Gameplay.enableFloatingNumbers == FloatingNumbers::Vertical) {
+	} else if (*GetOptions().Gameplay.enableFloatingNumbers == FloatingNumbers::Vertical) {
 		endOffset = goodAngles[0];
 	}
 
@@ -128,7 +129,7 @@ void AddFloatingNumber(Point pos, Displacement offset, DamageType type, int valu
 
 void AddFloatingNumber(DamageType damageType, const Monster &monster, int damage)
 {
-	if (*sgOptions.Gameplay.enableFloatingNumbers == FloatingNumbers::Off)
+	if (*GetOptions().Gameplay.enableFloatingNumbers == FloatingNumbers::Off)
 		return;
 
 	Displacement offset = {};
@@ -151,7 +152,7 @@ void AddFloatingNumber(DamageType damageType, const Monster &monster, int damage
 
 void AddFloatingNumber(DamageType damageType, const Player &player, int damage)
 {
-	if (*sgOptions.Gameplay.enableFloatingNumbers == FloatingNumbers::Off)
+	if (*GetOptions().Gameplay.enableFloatingNumbers == FloatingNumbers::Off)
 		return;
 
 	Displacement offset = {};
@@ -170,14 +171,14 @@ void AddFloatingNumber(DamageType damageType, const Player &player, int damage)
 
 void DrawFloatingNumbers(const Surface &out, Point viewPosition, Displacement offset)
 {
-	if (*sgOptions.Gameplay.enableFloatingNumbers == FloatingNumbers::Off)
+	if (*GetOptions().Gameplay.enableFloatingNumbers == FloatingNumbers::Off)
 		return;
 
 	for (auto &floatingNum : FloatingQueue) {
 		Displacement worldOffset = viewPosition - floatingNum.startPos;
 		worldOffset = worldOffset.worldToScreen() + offset + Displacement { TILE_WIDTH / 2, -TILE_HEIGHT / 2 } + floatingNum.startOffset;
 
-		if (*sgOptions.Graphics.zoom) {
+		if (*GetOptions().Graphics.zoom) {
 			worldOffset *= 2;
 		}
 
@@ -189,7 +190,8 @@ void DrawFloatingNumbers(const Surface &out, Point viewPosition, Displacement of
 		float mul = 1 - (timeLeft / 2500.0f);
 		screenPosition += floatingNum.endOffset * mul;
 
-		DrawString(out, floatingNum.text, Rectangle { screenPosition, { lineWidth, 0 } }, floatingNum.style);
+		DrawString(out, floatingNum.text, Rectangle { screenPosition, { lineWidth, 0 } },
+		    { .flags = floatingNum.style });
 	}
 
 	ClearExpiredNumbers();
@@ -197,7 +199,7 @@ void DrawFloatingNumbers(const Surface &out, Point viewPosition, Displacement of
 
 void ClearFloatingNumbers()
 {
-	srand(time(nullptr));
+	srand(static_cast<unsigned int>(time(nullptr)));
 
 	FloatingQueue.clear();
 }

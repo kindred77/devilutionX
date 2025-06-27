@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.ViewTreeObserver;
+import android.view.WindowManager;
 
 import org.libsdl.app.SDLActivity;
 
@@ -22,6 +23,10 @@ public class DevilutionXSDLActivity extends SDLActivity {
 		// for fullscreen apps after Android 7.0
 		if (Build.VERSION.SDK_INT >= 25)
 			trackVisibleSpace();
+
+		// Force app to overlap with the display cutout
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+			getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
 
 		fileManager = new ExternalFilesManager(this);
 
@@ -78,8 +83,9 @@ public class DevilutionXSDLActivity extends SDLActivity {
 			return true;
 		if (lang.startsWith("ru") && !fileManager.hasFile("ru.mpq"))
 			return true;
-		if (lang.startsWith("ko") || lang.startsWith("zh") || lang.startsWith("ja")) {
-			if (!fileManager.hasFile("fonts.mpq"))
+		File fonts_mpq = fileManager.getFile("/fonts.mpq");
+		if (lang.startsWith("ko") || lang.startsWith("zh") || lang.startsWith("ja") || fonts_mpq.exists()) {
+			if (!fonts_mpq.exists() || areFontsOutOfDate(fonts_mpq.getAbsolutePath()))
 				return true;
 		}
 
@@ -135,4 +141,6 @@ public class DevilutionXSDLActivity extends SDLActivity {
 				"devilutionx"
 		};
 	}
+
+	public static native boolean areFontsOutOfDate(String fonts_mpq);
 }

@@ -5,12 +5,13 @@
  */
 #pragma once
 
-#include "engine.h"
+#include "engine/point.hpp"
+#include "engine/surface.hpp"
 
 namespace devilution {
 
 void ToggleItemLabelHighlight();
-void AltPressed(bool pressed);
+void HighlightKeyPressed(bool pressed);
 bool IsItemLabelHighlighted();
 void ResetItemlabelHighlighted();
 bool IsHighlightingLabelsEnabled();

@@ -5,6 +5,8 @@
  */
 #include "quests.h"
 
+#include <cstdint>
+
 #include <fmt/format.h>
 
 #include "DiabloUI/ui_flags.hpp"
@@ -15,7 +17,7 @@
 #include "engine/render/clx_render.hpp"
 #include "engine/render/text_render.hpp"
 #include "engine/world_tile.hpp"
-#include "init.h"
+#include "game_mode.hpp"
 #include "levels/gendung.h"
 #include "levels/town.h"
 #include "levels/trigs.h"
@@ -26,8 +28,13 @@
 #include "panels/ui_panels.hpp"
 #include "stores.h"
 #include "towners.h"
+#include "utils/is_of.hpp"
 #include "utils/language.h"
 #include "utils/utf8.hpp"
+
+#ifdef _DEBUG
+#include "debug.h"
+#endif
 
 namespace devilution {
 
@@ -88,7 +95,7 @@ constexpr int LineHeight = 12;
 constexpr int MaxSpacing = LineHeight * 2;
 int ListYOffset;
 int LineSpacing;
-/** The number of pixels to move finished quest, to seperate them from the active ones */
+/** The number of pixels to move finished quest, to separate them from the active ones */
 int FinishedQuestOffset;
 
 const char *const QuestTriggerNames[5] = {
@@ -98,30 +105,6 @@ const char *const QuestTriggerNames[5] = {
 	N_(/* TRANSLATORS: Quest Map*/ "A Dark Passage"),
 	N_(/* TRANSLATORS: Quest Map*/ "Unholy Altar")
 };
-/**
- * A quest group containing the three quests the Butcher,
- * Ogden's Sign and Gharbad the Weak, which ensures that exactly
- * two of these three quests appear in any single player game.
- */
-int QuestGroup1[3] = { Q_BUTCHER, Q_LTBANNER, Q_GARBUD };
-/**
- * A quest group containing the three quests Halls of the Blind,
- * the Magic Rock and Valor, which ensures that exactly two of
- * these three quests appear in any single player game.
- */
-int QuestGroup2[3] = { Q_BLIND, Q_ROCK, Q_BLOOD };
-/**
- * A quest group containing the three quests Black Mushroom,
- * Zhar the Mad and Anvil of Fury, which ensures that exactly
- * two of these three quests appear in any single player game.
- */
-int QuestGroup3[3] = { Q_MUSHROOM, Q_ZHAR, Q_ANVIL };
-/**
- * A quest group containing the two quests Lachdanan and Warlord
- * of Blood, which ensures that exactly one of these two quests
- * appears in any single player game.
- */
-int QuestGroup4[2] = { Q_VEIL, Q_WARLORD };
 
 /**
  * @brief There is no reason to run this, the room has already had a proper sector assigned
@@ -141,7 +124,7 @@ void DrawWarLord(Point position)
 {
 	auto dunData = LoadFileInMem<uint16_t>("levels\\l4data\\warlord2.dun");
 
-	SetPiece = { position, WorldTileSize(SDL_SwapLE16(dunData[0]), SDL_SwapLE16(dunData[1])) };
+	SetPiece = { position, GetDunSize(dunData.get()) };
 
 	PlaceDunTiles(dunData.get(), position, 6);
 }
@@ -150,7 +133,7 @@ void DrawSChamber(quest_id q, Point position)
 {
 	auto dunData = LoadFileInMem<uint16_t>("levels\\l2data\\bonestr1.dun");
 
-	SetPiece = { position, WorldTileSize(SDL_SwapLE16(dunData[0]), SDL_SwapLE16(dunData[1])) };
+	SetPiece = { position, GetDunSize(dunData.get()) };
 
 	PlaceDunTiles(dunData.get(), position, 3);
 
@@ -161,16 +144,15 @@ void DrawLTBanner(Point position)
 {
 	auto dunData = LoadFileInMem<uint16_t>("levels\\l1data\\banner1.dun");
 
-	int width = SDL_SwapLE16(dunData[0]);
-	int height = SDL_SwapLE16(dunData[1]);
+	WorldTileSize size = GetDunSize(dunData.get());
 
-	SetPiece = { position, WorldTileSize(SDL_SwapLE16(dunData[0]), SDL_SwapLE16(dunData[1])) };
+	SetPiece = { position, size };
 
 	const uint16_t *tileLayer = &dunData[2];
 
-	for (int j = 0; j < height; j++) {
-		for (int i = 0; i < width; i++) {
-			auto tileId = static_cast<uint8_t>(SDL_SwapLE16(tileLayer[j * width + i]));
+	for (WorldTileCoord j = 0; j < size.height; j++) {
+		for (WorldTileCoord i = 0; i < size.width; i++) {
+			auto tileId = static_cast<uint8_t>(SDL_SwapLE16(tileLayer[j * size.width + i]));
 			if (tileId != 0) {
 				pdungeon[position.x + i][position.y + j] = tileId;
 			}
@@ -191,7 +173,7 @@ void DrawBlood(Point position)
 {
 	auto dunData = LoadFileInMem<uint16_t>("levels\\l2data\\blood2.dun");
 
-	SetPiece = { position, WorldTileSize(SDL_SwapLE16(dunData[0]), SDL_SwapLE16(dunData[1])) };
+	SetPiece = { position, GetDunSize(dunData.get()) };
 
 	PlaceDunTiles(dunData.get(), position, 0);
 }
@@ -212,23 +194,26 @@ int QuestLogMouseToEntry()
 	return -1;
 }
 
-void PrintQLString(const Surface &out, int x, int y, string_view str, bool marked, bool disabled = false)
+void PrintQLString(const Surface &out, int x, int y, std::string_view str, bool marked, bool disabled = false)
 {
 	int width = GetLineWidth(str);
 	x += std::max((257 - width) / 2, 0);
 	if (marked) {
 		ClxDraw(out, GetPanelPosition(UiPanels::Quest, { x - 20, y + 13 }), (*pSPentSpn2Cels)[PentSpn2Spin()]);
 	}
-	DrawString(out, str, { GetPanelPosition(UiPanels::Quest, { x, y }), { 257, 0 } }, disabled ? UiFlags::ColorWhitegold : UiFlags::ColorWhite);
+	DrawString(out, str, { GetPanelPosition(UiPanels::Quest, { x, y }), { 257, 0 } },
+	    { .flags = disabled ? UiFlags::ColorWhitegold : UiFlags::ColorWhite });
 	if (marked) {
 		ClxDraw(out, GetPanelPosition(UiPanels::Quest, { x + width + 7, y + 13 }), (*pSPentSpn2Cels)[PentSpn2Spin()]);
 	}
 }
 
+std::array<Color, 32> PureWaterPalette;
+
 void StartPWaterPurify()
 {
-	PlaySfxLoc(IS_QUESTDN, MyPlayer->position.tile);
-	LoadPalette("levels\\l3data\\l3pwater.pal", false);
+	PlaySfxLoc(SfxID::QuestDone, MyPlayer->position.tile);
+	LoadFileInMem("levels\\l3data\\l3pwater.pal", PureWaterPalette);
 	UpdatePWaterPalette();
 	WaterDone = 32;
 }
@@ -267,9 +252,9 @@ void InitQuests()
 		}
 	}
 
-	if (!UseMultiplayerQuests() && *sgOptions.Gameplay.randomizeQuests) {
-		// Quests are set from the seed used to generate level 16.
-		InitialiseQuestPools(glSeedTbl[15], Quests);
+	if (!UseMultiplayerQuests() && *GetOptions().Gameplay.randomizeQuests) {
+		// Quests are set from the seed used to generate level 15.
+		InitialiseQuestPools(DungeonSeeds[15], Quests);
 	}
 
 	if (gbIsSpawn) {
@@ -292,28 +277,25 @@ void InitQuests()
 
 void InitialiseQuestPools(uint32_t seed, Quest quests[])
 {
-	SetRndSeed(seed);
-	quests[PickRandomlyAmong({ Q_SKELKING, Q_PWATER })]._qactive = QUEST_NOTAVAIL;
+	DiabloGenerator rng(seed);
+	quests[rng.pickRandomlyAmong({ Q_SKELKING, Q_PWATER })]._qactive = QUEST_NOTAVAIL;
 
-	// using int and not size_t here to detect negative values from GenerateRnd
-	int randomIndex = GenerateRnd(sizeof(QuestGroup1) / sizeof(*QuestGroup1));
+	if (seed == 988045466) {
+		// If someone starts a new game at 1977-12-28 19:44:42 UTC or 2087-02-18 22:43:02 UTC
+		//  vanilla Diablo ends up reading QuestGroup1[-2] here. Due to the way the data segment
+		//  is laid out (at least in 1.09) this ends up reading the address of the string
+		//  "A Dark Passage" and trying to write to Quests[<addr>*8] which lands in read-only memory.
+		// The proper result would've been to mark The Butcher unavailable but instead nothing happens.
+		rng.discardRandomValues(1);
+	} else {
+		quests[rng.pickRandomlyAmong({ Q_BUTCHER, Q_LTBANNER, Q_GARBUD })]._qactive = QUEST_NOTAVAIL;
+	}
 
-	if (randomIndex >= 0)
-		quests[QuestGroup1[randomIndex]]._qactive = QUEST_NOTAVAIL;
+	quests[rng.pickRandomlyAmong({ Q_BLIND, Q_ROCK, Q_BLOOD })]._qactive = QUEST_NOTAVAIL;
 
-	randomIndex = GenerateRnd(sizeof(QuestGroup2) / sizeof(*QuestGroup2));
-	if (randomIndex >= 0)
-		quests[QuestGroup2[randomIndex]]._qactive = QUEST_NOTAVAIL;
+	quests[rng.pickRandomlyAmong({ Q_MUSHROOM, Q_ZHAR, Q_ANVIL })]._qactive = QUEST_NOTAVAIL;
 
-	randomIndex = GenerateRnd(sizeof(QuestGroup3) / sizeof(*QuestGroup3));
-	if (randomIndex >= 0)
-		quests[QuestGroup3[randomIndex]]._qactive = QUEST_NOTAVAIL;
-
-	randomIndex = GenerateRnd(sizeof(QuestGroup4) / sizeof(*QuestGroup4));
-
-	// always true, QuestGroup4 has two members
-	if (randomIndex >= 0)
-		quests[QuestGroup4[randomIndex]]._qactive = QUEST_NOTAVAIL;
+	quests[rng.pickRandomlyAmong({ Q_VEIL, Q_WARLORD })]._qactive = QUEST_NOTAVAIL;
 }
 
 void CheckQuests()
@@ -338,7 +320,7 @@ void CheckQuests()
 	    && (quest._qactive == QUEST_ACTIVE || quest._qactive == QUEST_DONE)
 	    && (quest._qvar2 == 0 || quest._qvar2 == 2)) {
 		// Spawn a portal at the quest trigger location
-		AddMissile(quest.position, quest.position, Direction::South, MissileID::RedPortal, TARGET_MONSTERS, MyPlayerId, 0, 0);
+		AddMissile(quest.position, quest.position, Direction::South, MissileID::RedPortal, TARGET_MONSTERS, *MyPlayer, 0, 0);
 		quest._qvar2 = 1;
 		if (quest._qactive == QUEST_ACTIVE && quest._qvar1 == 2) {
 			quest._qvar1 = 3;
@@ -350,18 +332,20 @@ void CheckQuests()
 	    && setlvlnum == SL_VILEBETRAYER
 	    && quest._qvar2 == 4) {
 		Point portalLocation { 35, 32 };
-		AddMissile(portalLocation, portalLocation, Direction::South, MissileID::RedPortal, TARGET_MONSTERS, MyPlayerId, 0, 0);
+		AddMissile(portalLocation, portalLocation, Direction::South, MissileID::RedPortal, TARGET_MONSTERS, *MyPlayer, 0, 0);
 		quest._qvar2 = 3;
 	}
 
 	if (setlevel) {
-		if (setlvlnum == Quests[Q_PWATER]._qslvl
-		    && Quests[Q_PWATER]._qactive != QUEST_INIT
-		    && leveltype == Quests[Q_PWATER]._qlvltype
+		Quest &poisonWater = Quests[Q_PWATER];
+		if (setlvlnum == poisonWater._qslvl
+		    && poisonWater._qactive != QUEST_INIT
+		    && leveltype == poisonWater._qlvltype
 		    && ActiveMonsterCount == 4
-		    && Quests[Q_PWATER]._qactive != QUEST_DONE) {
-			Quests[Q_PWATER]._qactive = QUEST_DONE;
-			NetSendCmdQuest(true, Quests[Q_PWATER]);
+		    && poisonWater._qactive != QUEST_DONE) {
+			poisonWater._qactive = QUEST_DONE;
+			poisonWater._qlog = true; // even if the player skips talking to Pepin completely they should at least notice the water being purified once they cleanse the level
+			NetSendCmdQuest(true, poisonWater);
 			StartPWaterPurify();
 		}
 	} else if (MyPlayer->_pmode == PM_STAND) {
@@ -369,7 +353,8 @@ void CheckQuests()
 			if (currlevel == quest._qlevel
 			    && quest._qslvl != 0
 			    && quest._qactive != QUEST_NOTAVAIL
-			    && MyPlayer->position.tile == quest.position) {
+			    && MyPlayer->position.tile == quest.position
+			    && (quest._qidx != Q_BETRAYER || quest._qvar1 >= 3)) {
 				if (quest._qlvltype != DTYPE_NONE) {
 					setlvltype = quest._qlvltype;
 				}
@@ -449,14 +434,14 @@ void CheckQuestKill(const Monster &monster, bool sendmsg)
 					}
 				}
 			}
-			if (sendmsg) {
-				NetSendCmdQuest(true, betrayerQuest);
-				NetSendCmdQuest(true, diabloQuest);
-			}
 		} else {
 			InitVPTriggers();
 			betrayerQuest._qvar2 = 4;
-			AddMissile({ 35, 32 }, { 35, 32 }, Direction::South, MissileID::RedPortal, TARGET_MONSTERS, MyPlayerId, 0, 0);
+			AddMissile({ 35, 32 }, { 35, 32 }, Direction::South, MissileID::RedPortal, TARGET_MONSTERS, myPlayer, 0, 0);
+		}
+		if (sendmsg) {
+			NetSendCmdQuest(true, betrayerQuest);
+			NetSendCmdQuest(true, diabloQuest);
 		}
 	} else if (monster.uniqueType == UniqueMonsterType::WarlordOfBlood) {
 		Quests[Q_WARLORD]._qactive = QUEST_DONE;
@@ -516,6 +501,11 @@ int GetMapReturnLevel()
 
 Point GetMapReturnPosition()
 {
+#ifdef _DEBUG
+	if (!TestMapPath.empty())
+		return ViewPosition;
+#endif
+
 	switch (setlvlnum) {
 	case SL_SKELKING:
 		return Quests[Q_SKELKING].position + Direction::SouthEast;
@@ -526,7 +516,7 @@ Point GetMapReturnPosition()
 	case SL_VILEBETRAYER:
 		return Quests[Q_BETRAYER].position + Direction::South;
 	default:
-		return Towners[TOWN_DRUNK].position + Displacement { 1, 0 };
+		return GetTowner(TOWN_DRUNK)->position + Direction::SouthEast;
 	}
 }
 
@@ -536,15 +526,17 @@ void LoadPWaterPalette()
 		return;
 
 	if (Quests[Q_PWATER]._qactive == QUEST_DONE)
-		LoadPalette("levels\\l3data\\l3pwater.pal");
+		LoadPaletteAndInitBlending("levels\\l3data\\l3pwater.pal");
 	else
-		LoadPalette("levels\\l3data\\l3pfoul.pal");
+		LoadPaletteAndInitBlending("levels\\l3data\\l3pfoul.pal");
 }
 
 void UpdatePWaterPalette()
 {
 	if (WaterDone > 0) {
-		palette_update_quest_palette(WaterDone);
+		// `WaterDone` is in [1, 32], so `colorIndex` is in [0, 31].
+		const unsigned colorIndex = 32 - WaterDone;
+		SetLogicalPaletteColor(colorIndex, PureWaterPalette[colorIndex].toSDL());
 		WaterDone--;
 		return;
 	}
@@ -604,6 +596,8 @@ void ResyncQuests()
 	if (gbIsSpawn)
 		return;
 
+	LoadingMapObjects = true;
+
 	if (Quests[Q_LTBANNER].IsAvailable()) {
 		Monster *snotSpill = FindUniqueMonster(UniqueMonsterType::SnotSpill);
 		if (Quests[Q_LTBANNER]._qvar1 == 1) {
@@ -651,7 +645,7 @@ void ResyncQuests()
 	}
 	if (currlevel == Quests[Q_MUSHROOM]._qlevel && !setlevel) {
 		if (Quests[Q_MUSHROOM]._qactive == QUEST_INIT && Quests[Q_MUSHROOM]._qvar1 == QS_INIT) {
-			SpawnQuestItem(IDI_FUNGALTM, { 0, 0 }, 5, 1, true);
+			SpawnQuestItem(IDI_FUNGALTM, { 0, 0 }, 5, SelectionRegion::Bottom, true);
 			Quests[Q_MUSHROOM]._qvar1 = QS_TOMESPAWNED;
 			NetSendCmdQuest(true, Quests[Q_MUSHROOM]);
 		} else {
@@ -667,7 +661,7 @@ void ResyncQuests()
 	}
 	if (currlevel == Quests[Q_VEIL]._qlevel + 1 && Quests[Q_VEIL]._qactive == QUEST_ACTIVE && Quests[Q_VEIL]._qvar1 == 0 && !gbIsMultiplayer) {
 		Quests[Q_VEIL]._qvar1 = 1;
-		SpawnQuestItem(IDI_GLDNELIX, { 0, 0 }, 5, 1, true);
+		SpawnQuestItem(IDI_GLDNELIX, { 0, 0 }, 5, SelectionRegion::Bottom, true);
 		NetSendCmdQuest(true, Quests[Q_VEIL]);
 	}
 	if (setlevel && setlvlnum == SL_VILEBETRAYER) {
@@ -787,6 +781,8 @@ void ResyncQuests()
 			}
 		}
 	}
+
+	LoadingMapObjects = false;
 }
 
 void DrawQuestLog(const Surface &out)
@@ -868,7 +864,7 @@ void QuestlogUp()
 		if (SelectedQuest < 0) {
 			SelectedQuest = FirstFinishedQuest - 1;
 		}
-		PlaySFX(IS_TITLEMOV);
+		PlaySFX(SfxID::MenuMove);
 	}
 }
 
@@ -881,13 +877,13 @@ void QuestlogDown()
 		if (SelectedQuest == FirstFinishedQuest) {
 			SelectedQuest = 0;
 		}
-		PlaySFX(IS_TITLEMOV);
+		PlaySFX(SfxID::MenuMove);
 	}
 }
 
 void QuestlogEnter()
 {
-	PlaySFX(IS_TITLSLCT);
+	PlaySFX(SfxID::MenuSelect);
 	if (EncounteredQuestCount != 0 && SelectedQuest >= 0 && SelectedQuest < FirstFinishedQuest)
 		InitQTextMsg(Quests[EncounteredQuests[SelectedQuest]]._qmsg);
 	QuestLogIsOpen = false;
@@ -909,7 +905,7 @@ void SetMultiQuest(int q, quest_state s, bool log, int v1, int v2, int16_t qmsg)
 	auto &quest = Quests[q];
 	quest_state oldQuestState = quest._qactive;
 	if (quest._qactive != QUEST_DONE) {
-		if (s > quest._qactive)
+		if (s > quest._qactive || (IsAnyOf(s, QUEST_ACTIVE, QUEST_DONE) && IsAnyOf(quest._qactive, QUEST_HIVE_TEASE1, QUEST_HIVE_TEASE2, QUEST_HIVE_ACTIVE)))
 			quest._qactive = s;
 		if (log)
 			quest._qlog = true;
@@ -922,9 +918,14 @@ void SetMultiQuest(int q, quest_state s, bool log, int v1, int v2, int16_t qmsg)
 		// Ensure that changes on another client is also updated on our own
 		ResyncQuests();
 
+		bool questGotCompleted = oldQuestState != QUEST_DONE && quest._qactive == QUEST_DONE;
 		// Ensure that water also changes for remote players
-		if (quest._qidx == Q_PWATER && oldQuestState == QUEST_ACTIVE && quest._qactive == QUEST_DONE && MyPlayer->isOnLevel(quest._qslvl))
+		if (quest._qidx == Q_PWATER && questGotCompleted && MyPlayer->isOnLevel(quest._qslvl))
 			StartPWaterPurify();
+		if (quest._qidx == Q_GIRL && questGotCompleted && MyPlayer->isOnLevel(0))
+			UpdateGirlAnimAfterQuestComplete();
+		if (quest._qidx == Q_JERSEY && questGotCompleted && MyPlayer->isOnLevel(0))
+			UpdateCowFarmerAnimAfterQuestComplete();
 	}
 }
 

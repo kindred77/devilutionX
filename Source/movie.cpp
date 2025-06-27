@@ -4,6 +4,9 @@
  * Implementation of video playback.
  */
 
+#include <cstdint>
+
+#include "controls/control_mode.hpp"
 #include "controls/plrctrls.h"
 #include "diablo.h"
 #include "effects.h"
@@ -55,6 +58,25 @@ void play_movie(const char *pszMovie, bool userCanClose)
 					if (userCanClose || (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE))
 						movie_playing = false;
 					break;
+#ifndef USE_SDL1
+				case SDL_WINDOWEVENT:
+					if (*GetOptions().Gameplay.pauseOnFocusLoss) {
+						if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+							diablo_focus_pause();
+						else if (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED)
+							diablo_focus_unpause();
+					}
+					break;
+#else
+				case SDL_ACTIVEEVENT:
+					if ((event.active.state & SDL_APPINPUTFOCUS) != 0) {
+						if (event.active.gain == 0)
+							diablo_focus_pause();
+						else
+							diablo_focus_unpause();
+					}
+					break;
+#endif
 				case SDL_QUIT:
 					SVidPlayEnd();
 					diablo_quit(0);

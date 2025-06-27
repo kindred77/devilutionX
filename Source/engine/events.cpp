@@ -1,11 +1,16 @@
 #include "engine/events.hpp"
 
+#include <cstdint>
+
 #include "controls/input.h"
-#include "engine.h"
+#include "controls/padmapper.hpp"
 #include "engine/demomode.h"
+#include "engine/render/primitive_render.hpp"
 #include "interfac.h"
 #include "movie.h"
 #include "options.h"
+#include "panels/console.hpp"
+#include "utils/is_of.hpp"
 #include "utils/log.hpp"
 
 #ifdef USE_SDL1
@@ -98,6 +103,7 @@ bool FetchMessage_Real(SDL_Event *event, uint16_t *modState)
 	case SDL_TEXTEDITING:
 	case SDL_TEXTINPUT:
 	case SDL_WINDOWEVENT:
+	case SDL_MOUSEWHEEL:
 #else
 	case SDL_ACTIVEEVENT:
 #endif
@@ -117,18 +123,6 @@ bool FetchMessage_Real(SDL_Event *event, uint16_t *modState)
 		*event = e;
 		break;
 #ifndef USE_SDL1
-	case SDL_MOUSEWHEEL:
-		event->type = SDL_KEYDOWN;
-		if (e.wheel.y > 0) {
-			event->key.keysym.sym = (SDL_GetModState() & KMOD_CTRL) != 0 ? SDLK_KP_PLUS : SDLK_UP;
-		} else if (e.wheel.y < 0) {
-			event->key.keysym.sym = (SDL_GetModState() & KMOD_CTRL) != 0 ? SDLK_KP_MINUS : SDLK_DOWN;
-		} else if (e.wheel.x > 0) {
-			event->key.keysym.sym = SDLK_LEFT;
-		} else if (e.wheel.x < 0) {
-			event->key.keysym.sym = SDLK_RIGHT;
-		}
-		break;
 #if SDL_VERSION_ATLEAST(2, 0, 4)
 	case SDL_AUDIODEVICEADDED:
 		return FalseAvail("SDL_AUDIODEVICEADDED", e.adevice.which);
@@ -150,7 +144,7 @@ EventHandler CurrentEventHandler;
 
 EventHandler SetEventHandler(EventHandler eventHandler)
 {
-	sgOptions.Padmapper.ReleaseAllActiveButtons();
+	PadmapperReleaseAllActiveButtons();
 
 	EventHandler previousHandler = CurrentEventHandler;
 	CurrentEventHandler = eventHandler;

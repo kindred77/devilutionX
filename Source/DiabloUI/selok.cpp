@@ -3,6 +3,7 @@
 #include "DiabloUI/diabloui.h"
 #include "control.h"
 #include "engine/render/text_render.hpp"
+#include "game_mode.hpp"
 #include "utils/language.h"
 #include "utils/utf8.hpp"
 
@@ -30,7 +31,7 @@ void selok_Free()
 	vecSelOkDialog.clear();
 }
 
-void selok_Select(int /*value*/)
+void selok_Select(size_t /*value*/)
 {
 	selok_endMenu = true;
 }

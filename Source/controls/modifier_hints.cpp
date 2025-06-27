@@ -1,6 +1,7 @@
 #include "controls/modifier_hints.h"
 
 #include <cstddef>
+#include <cstdint>
 
 #include "DiabloUI/ui_flags.hpp"
 #include "control.h"
@@ -31,12 +32,6 @@ constexpr int CircleTop = 101;
 
 /** Spell icon side size. */
 constexpr int IconSize = 37;
-
-/** Spell icon text right margin. */
-constexpr int IconSizeTextMarginRight = 3;
-
-/** Spell icon text top margin. */
-constexpr int IconSizeTextMarginTop = 2;
 
 constexpr int HintBoxSize = 39;
 constexpr int HintBoxMargin = 5;

@@ -1,5 +1,7 @@
 #include "DiabloUI/dialogs.h"
 
+#include <cstdint>
+#include <string_view>
 #include <utility>
 
 #include "DiabloUI/button.h"
@@ -12,11 +14,13 @@
 #include "engine/load_clx.hpp"
 #include "engine/load_pcx.hpp"
 #include "engine/palette.h"
+#include "headless_mode.hpp"
 #include "hwcursor.hpp"
+#include "init.hpp"
 #include "utils/display.h"
+#include "utils/is_of.hpp"
 #include "utils/language.h"
 #include "utils/log.hpp"
-#include "utils/stdcompat/string_view.hpp"
 
 namespace devilution {
 
@@ -53,13 +57,16 @@ OptionalClxSprite LoadDialogSprite(bool hasCaption, bool isError)
 	return (*ownedDialogSprite)[0];
 }
 
-bool Init(string_view caption, string_view text, bool error, bool renderBehind)
+bool Init(std::string_view caption, std::string_view text, bool error, bool renderBehind)
 {
 	if (!renderBehind) {
 		if (!UiLoadBlackBackground()) {
 			if (SDL_ShowCursor(SDL_ENABLE) <= -1)
 				LogError("{}", SDL_GetError());
 		}
+	}
+	if (!IsHardwareCursor() && !ArtCursor) {
+		ArtCursor = LoadPcx("ui_art\\cursor", /*transparentColor=*/0);
 	}
 	LoadDialogButtonGraphics();
 
@@ -136,7 +143,7 @@ void DialogLoop(const std::vector<std::unique_ptr<UiItemBase>> &items, const std
 	} while (!dialogEnd);
 }
 
-void UiOkDialog(string_view caption, string_view text, bool error, const std::vector<std::unique_ptr<UiItemBase>> &renderBehind)
+void UiOkDialog(std::string_view caption, std::string_view text, bool error, const std::vector<std::unique_ptr<UiItemBase>> &renderBehind)
 {
 	static bool inDialog = false;
 
@@ -182,17 +189,17 @@ void UiOkDialog(string_view caption, string_view text, bool error, const std::ve
 
 } // namespace
 
-void UiErrorOkDialog(string_view caption, string_view text, const std::vector<std::unique_ptr<UiItemBase>> &renderBehind)
+void UiErrorOkDialog(std::string_view caption, std::string_view text, const std::vector<std::unique_ptr<UiItemBase>> &renderBehind)
 {
 	UiOkDialog(caption, text, /*error=*/true, renderBehind);
 }
 
-void UiErrorOkDialog(string_view caption, string_view text, bool error)
+void UiErrorOkDialog(std::string_view caption, std::string_view text, bool error)
 {
 	UiOkDialog(caption, text, error, vecNULL);
 }
 
-void UiErrorOkDialog(string_view text, const std::vector<std::unique_ptr<UiItemBase>> &renderBehind)
+void UiErrorOkDialog(std::string_view text, const std::vector<std::unique_ptr<UiItemBase>> &renderBehind)
 {
 	UiErrorOkDialog({}, text, renderBehind);
 }

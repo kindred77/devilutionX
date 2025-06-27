@@ -1,10 +1,12 @@
 #include "utils/surface_to_clx.hpp"
 
+#include <cstdint>
 #include <cstring>
 #include <vector>
 
-#include "utils/clx_write.hpp"
-#include "utils/endian.hpp"
+#include "utils/clx_encode.hpp"
+#include "utils/endian_read.hpp"
+#include "utils/endian_write.hpp"
 
 #ifdef DEBUG_SURFACE_TO_CLX_SIZE
 #include <iomanip>
@@ -30,20 +32,13 @@ OwnedClxSpriteList SurfaceToClx(const Surface &surface, unsigned numFrames,
 	for (unsigned frame = 1; frame <= numFrames; ++frame) {
 		WriteLE32(&clxData[4 * static_cast<size_t>(frame)], static_cast<uint32_t>(clxData.size()));
 
-		// Frame header: 5 16-bit values:
-		// 1. Offset to start of the pixel data.
-		// 2. Width
-		// 3. Height
-		// 4..5. Unused (0)
 		const size_t frameHeaderPos = clxData.size();
-		constexpr size_t FrameHeaderSize = 10;
-		clxData.resize(clxData.size() + FrameHeaderSize);
+		clxData.resize(clxData.size() + ClxFrameHeaderSize);
 
 		// Frame header:
-		WriteLE16(&clxData[frameHeaderPos], FrameHeaderSize);
+		WriteLE16(&clxData[frameHeaderPos], ClxFrameHeaderSize);
 		WriteLE16(&clxData[frameHeaderPos + 2], static_cast<uint16_t>(width));
 		WriteLE16(&clxData[frameHeaderPos + 4], static_cast<uint16_t>(frameHeight));
-		memset(&clxData[frameHeaderPos + 6], 0, 4);
 
 		unsigned transparentRunWidth = 0;
 		size_t line = 0;
@@ -55,25 +50,25 @@ OwnedClxSpriteList SurfaceToClx(const Surface &surface, unsigned numFrames,
 				for (const uint8_t *srcEnd = src + width; src != srcEnd; ++src) {
 					if (*src == *transparentColor) {
 						if (solidRunWidth != 0) {
-							AppendCl2PixelsOrFillRun(src - transparentRunWidth - solidRunWidth, solidRunWidth, clxData);
+							AppendClxPixelsOrFillRun(src - transparentRunWidth - solidRunWidth, solidRunWidth, clxData);
 							solidRunWidth = 0;
 						}
 						++transparentRunWidth;
 					} else {
-						AppendCl2TransparentRun(transparentRunWidth, clxData);
+						AppendClxTransparentRun(transparentRunWidth, clxData);
 						transparentRunWidth = 0;
 						++solidRunWidth;
 					}
 				}
 				if (solidRunWidth != 0) {
-					AppendCl2PixelsOrFillRun(src - solidRunWidth, solidRunWidth, clxData);
+					AppendClxPixelsOrFillRun(src - solidRunWidth, solidRunWidth, clxData);
 				}
 			} else {
-				AppendCl2PixelsOrFillRun(src, width, clxData);
+				AppendClxPixelsOrFillRun(src, width, clxData);
 			}
 			++line;
 		}
-		AppendCl2TransparentRun(transparentRunWidth, clxData);
+		AppendClxTransparentRun(transparentRunWidth, clxData);
 
 		dataPtr += static_cast<unsigned>(pitch * frameHeight);
 	}

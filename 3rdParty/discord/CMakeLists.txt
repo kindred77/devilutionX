@@ -1,14 +1,24 @@
-include(functions/FetchContent_MakeAvailableExcludeFromAll)
+include(functions/FetchContent_ExcludeFromAll_backport)
 include(FetchContent)
 
 find_package(Patch REQUIRED)
 
-FetchContent_Declare(discordsrc
-  URL https://dl-game-sdk.discordapp.net/3.2.1/discord_game_sdk.zip
-  URL_HASH MD5=73e5e1b3f8413a2c7184ef17476822f2
-  PATCH_COMMAND "${Patch_EXECUTABLE}" -p1 -N < "${CMAKE_CURRENT_LIST_DIR}/fixes.patch" || true
-)
-FetchContent_MakeAvailableExcludeFromAll(discordsrc)
+set(Discord_SDK_URL "https://dl-game-sdk.discordapp.net/3.2.1/discord_game_sdk.zip")
+set(Discord_SDK_HASH "73e5e1b3f8413a2c7184ef17476822f2")
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  FetchContent_Declare_ExcludeFromAll(discordsrc
+    URL ${Discord_SDK_URL}
+    URL_HASH MD5=${Discord_SDK_HASH}
+  )
+else()
+  FetchContent_Declare_ExcludeFromAll(discordsrc
+    URL ${Discord_SDK_URL}
+    URL_HASH MD5=${Discord_SDK_HASH}
+    PATCH_COMMAND "${Patch_EXECUTABLE}" -p1 -N < "${CMAKE_CURRENT_LIST_DIR}/fixes.patch" || true
+  )
+endif()
+FetchContent_MakeAvailable_ExcludeFromAll(discordsrc)
 
 file(GLOB discord_SRCS ${discordsrc_SOURCE_DIR}/cpp/*.cpp)
 add_library(discord STATIC ${discord_SRCS})
@@ -38,8 +48,12 @@ find_library(
 message("-- 📚 discord_game_sdk: ${DISCORD_LIB}")
 
 # Copy the dll so that tests and Debug builds can find it on Windows.
+# We also need it at this location to link to `discord_game_sdk.so` rather
+# than `_deps/discordsrc-src/lib/x86_64/discord_game_sdk.so` on Linux.
 file(COPY "${DISCORD_SHARED_LIB}" DESTINATION "${CMAKE_BINARY_DIR}")
 
 add_library(discord_game_sdk SHARED IMPORTED GLOBAL)
-set_property(TARGET discord_game_sdk PROPERTY IMPORTED_IMPLIB "${DISCORD_LIB}")
-set_property(TARGET discord_game_sdk PROPERTY IMPORTED_LOCATION "${DISCORD_SHARED_LIB}")
+set_target_properties(discord_game_sdk PROPERTIES
+  IMPORTED_IMPLIB "${DISCORD_LIB}"
+  IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/${DISCORD_SHARED_LIB_FILENAME}"
+)

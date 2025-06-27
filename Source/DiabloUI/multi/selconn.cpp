@@ -1,3 +1,5 @@
+#include <string_view>
+
 #include <fmt/format.h>
 
 #include "DiabloUI/diabloui.h"
@@ -12,7 +14,7 @@ int provider;
 const char *ConnectionNames[] {
 	"ZeroTier",
 	N_("Client-Server (TCP)"),
-	N_("Loopback"),
+	N_("Offline"),
 };
 
 namespace {
@@ -30,8 +32,8 @@ std::vector<std::unique_ptr<UiItemBase>> vecSelConnDlg;
 #define DESCRIPTION_WIDTH 205
 
 void SelconnEsc();
-void SelconnFocus(int value);
-void SelconnSelect(int value);
+void SelconnFocus(size_t value);
+void SelconnSelect(size_t value);
 
 void SelconnLoad()
 {
@@ -39,7 +41,7 @@ void SelconnLoad()
 
 #ifndef NONET
 #ifndef DISABLE_ZERO_TIER
-	vecConnItems.push_back(std::make_unique<UiListItem>(ConnectionNames[SELCONN_ZT], SELCONN_ZT));
+	vecConnItems.push_back(std::make_unique<UiListItem>(std::string_view(ConnectionNames[SELCONN_ZT]), SELCONN_ZT));
 #endif
 #ifndef DISABLE_TCP
 	vecConnItems.push_back(std::make_unique<UiListItem>(_(ConnectionNames[SELCONN_TCP]), SELCONN_TCP));
@@ -81,7 +83,7 @@ void SelconnLoad()
 	SDL_Rect rect9 = { (Sint16)(uiPosition.x + 299), (Sint16)(uiPosition.y + 427), 140, 35 };
 	vecSelConnDlg.push_back(std::make_unique<UiArtTextButton>(_("OK"), &UiFocusNavigationSelect, rect9, UiFlags::AlignCenter | UiFlags::VerticalCenter | UiFlags::FontSize30 | UiFlags::ColorUiGold));
 
-	SDL_Rect rect10 = { (Sint16)(uiPosition.x + 454), (Sint16)(uiPosition.y + 427), 140, 35 };
+	SDL_Rect rect10 = { (Sint16)(uiPosition.x + 454), (Sint16)(uiPosition.y + 427), 144, 35 };
 	vecSelConnDlg.push_back(std::make_unique<UiArtTextButton>(_("Cancel"), &UiFocusNavigationEsc, rect10, UiFlags::AlignCenter | UiFlags::VerticalCenter | UiFlags::FontSize30 | UiFlags::ColorUiGold));
 
 	UiInitList(SelconnFocus, SelconnSelect, SelconnEsc, vecSelConnDlg, true);
@@ -102,7 +104,7 @@ void SelconnEsc()
 	selconn_EndMenu = true;
 }
 
-void SelconnFocus(int value)
+void SelconnFocus(size_t value)
 {
 	int players = MAX_PLRS;
 	switch (vecConnItems[value]->m_value) {
@@ -124,7 +126,7 @@ void SelconnFocus(int value)
 	CopyUtf8(selconn_Description, WordWrapString(selconn_Description, DESCRIPTION_WIDTH), sizeof(selconn_Description));
 }
 
-void SelconnSelect(int value)
+void SelconnSelect(size_t value)
 {
 	provider = vecConnItems[value]->m_value;
 

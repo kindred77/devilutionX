@@ -6,6 +6,7 @@
 #include "xpbar.h"
 
 #include <array>
+#include <cstdint>
 
 #include <fmt/core.h>
 
@@ -14,6 +15,7 @@
 #include "engine/load_clx.hpp"
 #include "engine/point.hpp"
 #include "engine/render/clx_render.hpp"
+#include "engine/render/primitive_render.hpp"
 #include "options.h"
 #include "playerdat.hpp"
 #include "utils/format_int.hpp"
@@ -48,11 +50,23 @@ void DrawEndCap(const Surface &out, Point point, int idx, const ColorGradient &g
 	out.SetPixel({ point.x, point.y + 3 }, gradient[idx / 2]);
 }
 
+void OptionExperienceBarChanged()
+{
+	if (!gbRunGame)
+		return;
+	if (*GetOptions().Gameplay.experienceBar)
+		InitXPBar();
+	else
+		FreeXPBar();
+}
+
+const auto OptionChangeHandler = (GetOptions().Gameplay.experienceBar.SetValueChangedCallback(OptionExperienceBarChanged), true);
+
 } // namespace
 
 void InitXPBar()
 {
-	if (*sgOptions.Gameplay.experienceBar) {
+	if (*GetOptions().Gameplay.experienceBar) {
 		xpbarArt = LoadClx("data\\xpbar.clx");
 	}
 }
@@ -64,7 +78,7 @@ void FreeXPBar()
 
 void DrawXPBar(const Surface &out)
 {
-	if (!*sgOptions.Gameplay.experienceBar || talkflag)
+	if (!*GetOptions().Gameplay.experienceBar || ChatFlag)
 		return;
 
 	const Player &player = *MyPlayer;
@@ -75,21 +89,21 @@ void DrawXPBar(const Surface &out)
 
 	RenderClxSprite(out, (*xpbarArt)[0], back);
 
-	const int8_t charLevel = player._pLevel;
-
-	if (charLevel == MaxCharacterLevel) {
+	if (player.isMaxCharacterLevel()) {
 		// Draw a nice golden bar for max level characters.
 		DrawBar(out, position, BarWidth, GoldGradient);
 
 		return;
 	}
 
-	const uint64_t prevXp = ExpLvlsTbl[charLevel - 1];
+	const uint8_t charLevel = player.getCharacterLevel();
+
+	const uint64_t prevXp = GetNextExperienceThresholdForLevel(charLevel - 1);
 	if (player._pExperience < prevXp)
 		return;
 
 	uint64_t prevXpDelta1 = player._pExperience - prevXp;
-	uint64_t prevXpDelta = ExpLvlsTbl[charLevel] - prevXp;
+	uint64_t prevXpDelta = GetNextExperienceThresholdForLevel(charLevel) - prevXp;
 	uint64_t fullBar = BarWidth * prevXpDelta1 / prevXpDelta;
 
 	// Figure out how much to fill the last pixel of the XP bar, to make it gradually appear with gained XP
@@ -99,15 +113,15 @@ void DrawXPBar(const Surface &out)
 	const uint64_t fade = (prevXpDelta1 - lastFullPx) * (SilverGradient.size() - 1) / onePx;
 
 	// Draw beginning of bar full brightness
-	DrawBar(out, position, fullBar, SilverGradient);
+	DrawBar(out, position, static_cast<int>(fullBar), SilverGradient);
 
 	// End pixels appear gradually
-	DrawEndCap(out, position + Displacement { static_cast<int>(fullBar), 0 }, fade, SilverGradient);
+	DrawEndCap(out, position + Displacement { static_cast<int>(fullBar), 0 }, static_cast<int>(fade), SilverGradient);
 }
 
 bool CheckXPBarInfo()
 {
-	if (!*sgOptions.Gameplay.experienceBar)
+	if (!*GetOptions().Gameplay.experienceBar)
 		return false;
 	const Rectangle &mainPanel = GetMainPanel();
 
@@ -119,25 +133,26 @@ bool CheckXPBarInfo()
 
 	const Player &player = *MyPlayer;
 
-	const int8_t charLevel = player._pLevel;
+	const uint8_t charLevel = player.getCharacterLevel();
 
-	AddPanelString(fmt::format(fmt::runtime(_("Level {:d}")), charLevel));
+	AddInfoBoxString(fmt::format(fmt::runtime(_("Level {:d}")), charLevel));
 
-	if (charLevel == MaxCharacterLevel) {
+	if (player.isMaxCharacterLevel()) {
 		// Show a maximum level indicator for max level players.
 		InfoColor = UiFlags::ColorWhitegold;
 
-		AddPanelString(fmt::format(fmt::runtime(_("Experience: {:s}")), FormatInteger(ExpLvlsTbl[charLevel - 1])));
-		AddPanelString(_("Maximum Level"));
+		AddInfoBoxString(fmt::format(fmt::runtime(_("Experience: {:s}")), FormatInteger(player._pExperience)));
+		AddInfoBoxString(_("Maximum Level"));
 
 		return true;
 	}
 
 	InfoColor = UiFlags::ColorWhite;
 
-	AddPanelString(fmt::format(fmt::runtime(_("Experience: {:s}")), FormatInteger(player._pExperience)));
-	AddPanelString(fmt::format(fmt::runtime(_("Next Level: {:s}")), FormatInteger(ExpLvlsTbl[charLevel])));
-	AddPanelString(fmt::format(fmt::runtime(_("{:s} to Level {:d}")), FormatInteger(ExpLvlsTbl[charLevel] - player._pExperience), charLevel + 1));
+	AddInfoBoxString(fmt::format(fmt::runtime(_("Experience: {:s}")), FormatInteger(player._pExperience)));
+	uint32_t nextExperienceThreshold = player.getNextExperienceThreshold();
+	AddInfoBoxString(fmt::format(fmt::runtime(_("Next Level: {:s}")), FormatInteger(nextExperienceThreshold)));
+	AddInfoBoxString(fmt::format(fmt::runtime(_("{:s} to Level {:d}")), FormatInteger(nextExperienceThreshold - player._pExperience), charLevel + 1));
 
 	return true;
 }

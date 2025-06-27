@@ -5,16 +5,21 @@
  */
 #include "levels/themes.h"
 
+#include <cstdint>
+
 #include <fmt/core.h>
 
 #include "engine/path.h"
 #include "engine/points_in_rectangle_range.hpp"
 #include "engine/random.hpp"
 #include "items.h"
+#include "levels/tile_properties.hpp"
 #include "levels/trigs.h"
 #include "monster.h"
 #include "objects.h"
 #include "quests.h"
+#include "utils/algorithm/container.hpp"
+#include "utils/is_of.hpp"
 #include "utils/str_cat.hpp"
 
 namespace devilution {
@@ -36,57 +41,55 @@ bool treasureFlag;
 
 int themex;
 int themey;
-int themeVar1;
+size_t themeVar1;
 
 bool TFit_Shrine(int i)
 {
-	int xp = 0;
-	int yp = 0;
-	int found = 0;
+	Point position { 0, 0 };
+	size_t found = 0;
 
 	while (found == 0) {
-		Point testPosition { xp, yp };
-		if (dTransVal[xp][yp] == themes[i].ttval) {
-			if (TileHasAny(dPiece[xp][yp - 1], TileProperties::Trap)
+		Point testPosition = position;
+		if (dTransVal[position.x][position.y] == themes[i].ttval) {
+			if (TileHasAny(position + Direction::NorthEast, TileProperties::Trap)
 			    && IsTileNotSolid(testPosition + Direction::NorthWest)
 			    && IsTileNotSolid(testPosition + Direction::SouthEast)
-			    && dTransVal[xp - 1][yp] == themes[i].ttval
-			    && dTransVal[xp + 1][yp] == themes[i].ttval
+			    && dTransVal[position.x - 1][position.y] == themes[i].ttval
+			    && dTransVal[position.x + 1][position.y] == themes[i].ttval
 			    && !IsObjectAtPosition(testPosition + Direction::North)
 			    && !IsObjectAtPosition(testPosition + Direction::East)) {
 				found = 1;
 			}
 			if (found == 0
-			    && TileHasAny(dPiece[xp - 1][yp], TileProperties::Trap)
+			    && TileHasAny(position + Direction::NorthWest, TileProperties::Trap)
 			    && IsTileNotSolid(testPosition + Direction::NorthEast)
 			    && IsTileNotSolid(testPosition + Direction::SouthWest)
-			    && dTransVal[xp][yp - 1] == themes[i].ttval
-			    && dTransVal[xp][yp + 1] == themes[i].ttval
+			    && dTransVal[position.x][position.y - 1] == themes[i].ttval
+			    && dTransVal[position.x][position.y + 1] == themes[i].ttval
 			    && !IsObjectAtPosition(testPosition + Direction::North)
 			    && !IsObjectAtPosition(testPosition + Direction::West)) {
 				found = 2;
 			}
 		}
 		if (found == 0) {
-			xp++;
-			if (xp == MAXDUNX) {
-				xp = 0;
-				yp++;
-				if (yp == MAXDUNY)
+			position.x++;
+			if (position.x == MAXDUNX) {
+				position.x = 0;
+				position.y++;
+				if (position.y == MAXDUNY)
 					return false;
 			}
 		}
 	}
-	themex = xp;
-	themey = yp;
+	themex = position.x;
+	themey = position.y;
 	themeVar1 = found;
 	return true;
 }
 
 bool CheckThemeObj5(Point origin, int8_t regionId)
 {
-	const auto searchArea = PointsInRectangle(Rectangle { origin, 2 });
-	return std::all_of(searchArea.cbegin(), searchArea.cend(), [regionId](Point testPosition) {
+	return c_all_of(PointsInRectangle(Rectangle { origin, 2 }), [regionId](Point testPosition) {
 		// note out-of-bounds tiles are not solid, this function relies on the guard in TFit_Obj5 and dungeon border
 		if (IsTileSolid(testPosition)) {
 			return false;
@@ -152,8 +155,7 @@ bool TFit_GoatShrine(int t)
 
 bool CheckThemeObj3(Point origin, int8_t regionId, unsigned frequency = 0)
 {
-	const auto searchArea = PointsInRectangle(Rectangle { origin, 1 });
-	return std::all_of(searchArea.cbegin(), searchArea.cend(), [regionId, frequency](Point testPosition) {
+	return c_all_of(PointsInRectangle(Rectangle { origin, 1 }), [regionId, frequency](Point testPosition) {
 		if (!InDungeonBounds(testPosition)) {
 			return false;
 		}
@@ -299,7 +301,7 @@ bool SpecialThemeFit(int i, theme_id t)
 	return rv;
 }
 
-bool CheckThemeRoom(int tv)
+bool CheckThemeRoom(int8_t tv)
 {
 	for (int i = 0; i < numtrigs; i++) {
 		if (dTransVal[trigs[i].position.x][trigs[i].position.y] == tv)
@@ -323,7 +325,7 @@ bool CheckThemeRoom(int tv)
 
 	for (int j = 0; j < MAXDUNY; j++) {
 		for (int i = 0; i < MAXDUNX; i++) {
-			if (dTransVal[i][j] != tv || TileHasAny(dPiece[i][j], TileProperties::Solid))
+			if (dTransVal[i][j] != tv || TileHasAny({ i, j }, TileProperties::Solid))
 				continue;
 			if (dTransVal[i - 1][j] != tv && IsTileNotSolid({ i - 1, j }))
 				return false;
@@ -347,7 +349,7 @@ bool CheckThemeRoom(int tv)
  */
 void PlaceThemeMonsts(int t, int f)
 {
-	int scattertypes[138];
+	size_t scattertypes[138];
 
 	int numscattypes = 0;
 	for (size_t i = 0; i < LevelMonsterTypeCount; i++) {
@@ -356,7 +358,7 @@ void PlaceThemeMonsts(int t, int f)
 			numscattypes++;
 		}
 	}
-	int mtype = scattertypes[GenerateRnd(numscattypes)];
+	size_t mtype = scattertypes[GenerateRnd(numscattypes)];
 	for (int yp = 0; yp < MAXDUNY; yp++) {
 		for (int xp = 0; xp < MAXDUNX; xp++) {
 			if (dTransVal[xp][yp] == themes[t].ttval && IsTileNotSolid({ xp, yp }) && dItem[xp][yp] == 0 && !IsObjectAtPosition({ xp, yp })) {
@@ -514,7 +516,7 @@ void Theme_Treasure(int t)
 	int treasrnd[4] = { 4, 9, 7, 10 };
 	int monstrnd[4] = { 6, 8, 3, 7 };
 
-	AdvanceRndSeed();
+	DiscardRandomValues(1);
 	for (int yp = 0; yp < MAXDUNY; yp++) {
 		for (int xp = 0; xp < MAXDUNX; xp++) {
 			if (dTransVal[xp][yp] == themes[t].ttval && IsTileNotSolid({ xp, yp })) {
@@ -573,7 +575,7 @@ void Theme_Library(int t)
 				Object *bookstand = AddObject(OBJ_BOOKSTAND, { xp, yp });
 				if (!FlipCoin(2 * librnd[leveltype - 1])) {
 					if (bookstand != nullptr) {
-						bookstand->_oSelFlag = 0;
+						bookstand->selectionRegion = SelectionRegion::None;
 						bookstand->_oAnimFrame += 2;
 					}
 				}
@@ -843,7 +845,7 @@ void InitThemes()
 	constexpr theme_id ThemeGood[4] = { THEME_GOATSHRINE, THEME_SHRINE, THEME_SKELROOM, THEME_LIBRARY };
 
 	if (leveltype == DTYPE_CATHEDRAL) {
-		for (size_t i = 0; i < 256 && numthemes < MAXTHEMES; i++) {
+		for (int8_t i = 0; numthemes < MAXTHEMES; i++) {
 			if (CheckThemeRoom(i)) {
 				themes[numthemes].ttval = i;
 				theme_id j = ThemeGood[GenerateRnd(4)];
@@ -853,6 +855,8 @@ void InitThemes()
 				themes[numthemes].ttype = j;
 				numthemes++;
 			}
+			if (i > TransVal)
+				break;
 		}
 		return;
 	}
@@ -913,7 +917,6 @@ void CreateThemeRooms()
 		return;
 	}
 
-	ApplyObjectLighting = true;
 	for (int i = 0; i < numthemes; i++) {
 		themex = 0;
 		themey = 0;
@@ -973,7 +976,6 @@ void CreateThemeRooms()
 			app_fatal(StrCat("Unknown theme type: ", static_cast<int>(themes[i].ttype)));
 		}
 	}
-	ApplyObjectLighting = false;
 	if (leveltype == DTYPE_HELL && themeCount > 0) {
 		UpdateL4Trans();
 	}

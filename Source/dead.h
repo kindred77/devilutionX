@@ -5,11 +5,11 @@
  */
 #pragma once
 
-#include <array>
+#include <cstddef>
 #include <cstdint>
 
-#include "engine.h"
 #include "engine/clx_sprite.hpp"
+#include "engine/direction.hpp"
 #include "engine/point.hpp"
 
 namespace devilution {
@@ -39,6 +39,6 @@ extern int8_t stonendx;
 
 void InitCorpses();
 void AddCorpse(Point tilePosition, int8_t dv, Direction ddir);
-void SyncUniqDead();
+void MoveLightsToCorpses();
 
 } // namespace devilution
